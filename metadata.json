@@ -1,0 +1,7 @@
+{
+  "name": "EduLiaison - Carnet Scolaire Numérique",
+  "description": "Application web de carnet scolaire numérique pour établissement scolaire reliant l'administration, les enseignants et les parents en temps réel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

@@ -1,0 +1,67 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // User profiles & roles
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    // Registered emails directory for pre-login verification
+    match /registered_emails/{emailId} {
+      allow read, write: if true;
+    }
+
+    // Students
+    match /students/{studentId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    // Timeline Events
+    match /timeline_events/{eventId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isSignedIn();
+    }
+
+    // Attendance Records
+    match /attendance_records/{attendanceId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isSignedIn();
+    }
+
+    // School Documents & Circulars
+    match /school_documents/{documentId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    // Message threads
+    match /message_threads/{threadId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Connection check
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+  }
+}

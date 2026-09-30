@@ -1,0 +1,125 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role definition in the educational institution",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 150 },
+        "role": { "type": "string", "enum": ["parent", "enseignant", "direction", "eleve"] },
+        "name": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "role", "name"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Student record enrolled in the school",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100 },
+        "firstName": { "type": "string", "maxLength": 60 },
+        "lastName": { "type": "string", "maxLength": 60 },
+        "class": { "type": "string", "maxLength": 20 },
+        "level": { "type": "string", "maxLength": 20 },
+        "matricule": { "type": "string", "maxLength": 40 },
+        "photoUrl": { "type": "string", "maxLength": 500 },
+        "generalAverage": { "type": "number" },
+        "attendanceRate": { "type": "number" },
+        "rank": { "type": "number" },
+        "totalStudents": { "type": "number" },
+        "honors": { "type": "string", "maxLength": 100 },
+        "parentName": { "type": "string", "maxLength": 100 },
+        "parentPhone": { "type": "string", "maxLength": 30 },
+        "parentEmail": { "type": "string", "format": "email", "maxLength": 150 },
+        "isDelegue": { "type": "boolean" }
+      },
+      "required": ["id", "firstName", "lastName", "class", "matricule"]
+    },
+    "TimelineEvent": {
+      "title": "TimelineEvent",
+      "description": "Digital carnet event, grade, teacher observation, or notice",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100 },
+        "studentId": { "type": "string", "maxLength": 100 },
+        "title": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "enum": ["eval", "signature", "pedagogie", "vie-scolaire", "ecole"] },
+        "date": { "type": "string", "maxLength": 50 },
+        "time": { "type": "string", "maxLength": 20 },
+        "dayGroup": { "type": "string", "maxLength": 20 },
+        "author": { "type": "string", "maxLength": 100 },
+        "authorRole": { "type": "string", "maxLength": 100 },
+        "content": { "type": "string", "maxLength": 2000 },
+        "requiresSignature": { "type": "boolean" },
+        "isSigned": { "type": "boolean" },
+        "signedAt": { "type": "string", "maxLength": 50 },
+        "signedBy": { "type": "string", "maxLength": 100 },
+        "score": { "type": "number" },
+        "maxScore": { "type": "number" },
+        "coefficient": { "type": "number" }
+      },
+      "required": ["id", "studentId", "title", "category", "author", "content"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Attendance log, absence, or tardy declaration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100 },
+        "studentId": { "type": "string", "maxLength": 100 },
+        "date": { "type": "string", "maxLength": 50 },
+        "type": { "type": "string", "enum": ["retard", "absence-jour", "absence-longue", "depart-anticipe"] },
+        "duration": { "type": "string", "maxLength": 50 },
+        "motif": { "type": "string", "maxLength": 500 },
+        "isJustified": { "type": "boolean" },
+        "justificationType": { "type": "string", "maxLength": 100 },
+        "validatedBy": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "enum": ["valide", "en_attente", "rejete"] },
+        "details": { "type": "string", "maxLength": 1000 }
+      },
+      "required": ["id", "studentId", "date", "type", "motif", "status"]
+    },
+    "SchoolDocument": {
+      "title": "SchoolDocument",
+      "description": "Administrative circular, school regulation, or certificate",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100 },
+        "title": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "enum": ["direction", "reglements", "examens", "scolarite"] },
+        "date": { "type": "string", "maxLength": 50 },
+        "size": { "type": "string", "maxLength": 30 },
+        "issuer": { "type": "string", "maxLength": 100 },
+        "badge": { "type": "string", "maxLength": 50 },
+        "verifiedBy": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 1000 }
+      },
+      "required": ["id", "title", "category", "date", "issuer"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles and role information"
+    },
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Student master records and academic indicators"
+    },
+    "/timeline_events/{eventId}": {
+      "schema": { "$ref": "#/entities/TimelineEvent" },
+      "description": "Chronological events, marks, and notes on digital carnet"
+    },
+    "/attendance_records/{attendanceId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Student attendance, tardy, and absence records"
+    },
+    "/school_documents/{documentId}": {
+      "schema": { "$ref": "#/entities/SchoolDocument" },
+      "description": "Official circulars, school regulations, and certificate metadata"
+    }
+  }
+}
