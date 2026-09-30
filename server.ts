@@ -330,6 +330,11 @@ app.post('/api/confirm-password-reset', async (req, res) => {
   }
 });
 
+// Health Check Endpoint (useful for Render zero-downtime health checks)
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', service: 'EduLiaison', timestamp: new Date().toISOString() });
+});
+
 // Vite Middleware Setup
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
@@ -340,14 +345,16 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.join(__dirname, 'dist')));
+    const distPath = path.join(__dirname, 'dist');
+    app.use(express.static(distPath));
     app.get('*', (_req, res) => {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+      res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  app.listen(PORT, () => {
-    console.log(`🚀 EduLiaison Server & SMTP Service running on http://localhost:${PORT}`);
+  const portNumber = Number(PORT) || 3000;
+  app.listen(portNumber, '0.0.0.0', () => {
+    console.log(`🚀 EduLiaison Server running in ${process.env.NODE_ENV || 'development'} mode on port ${portNumber}`);
   });
 }
 
