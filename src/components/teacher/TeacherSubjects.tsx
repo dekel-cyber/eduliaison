@@ -79,6 +79,7 @@ export const TeacherSubjects: React.FC = () => {
   const [selectedClassId, setSelectedClassId] = useState<string>('fr-3a');
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [newSubject, setNewSubject] = useState({ name: '', level: '3ème C', weeklyHours: '4', coefficient: '4' });
+  const [isSaving, setIsSaving] = useState(false);
   const [assignSuccess, setAssignSuccess] = useState(false);
   const [activeTab, setActiveTab] = useState<'chapters' | 'resources' | 'homework'>('chapters');
 
@@ -86,27 +87,31 @@ export const TeacherSubjects: React.FC = () => {
 
   const handleAddSubject = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSubject.name.trim()) return;
-    const newItem: SubjectClass = {
-      id: `subj-${Date.now()}`,
-      name: newSubject.name,
-      level: newSubject.level,
-      studentsCount: 38,
-      weeklyHours: parseFloat(newSubject.weeklyHours) || 4,
-      coefficient: parseInt(newSubject.coefficient) || 3,
-      progressPercent: 0,
-      completedChapters: 0,
-      totalChapters: 16,
-      nextExam: 'À programmer',
-      room: 'Salle 108',
-      status: 'pending'
-    };
-    setClasses([...classes, newItem]);
-    setSelectedClassId(newItem.id);
-    setShowAssignModal(false);
-    setNewSubject({ name: '', level: '3ème C', weeklyHours: '4', coefficient: '4' });
-    setAssignSuccess(true);
-    setTimeout(() => setAssignSuccess(false), 4000);
+    if (!newSubject.name.trim() || isSaving) return;
+    setIsSaving(true);
+    setTimeout(() => {
+      const newItem: SubjectClass = {
+        id: `subj-${Date.now()}`,
+        name: newSubject.name,
+        level: newSubject.level,
+        studentsCount: 38,
+        weeklyHours: parseFloat(newSubject.weeklyHours) || 4,
+        coefficient: parseInt(newSubject.coefficient) || 3,
+        progressPercent: 0,
+        completedChapters: 0,
+        totalChapters: 16,
+        nextExam: 'À programmer',
+        room: 'Salle 108',
+        status: 'pending'
+      };
+      setClasses([...classes, newItem]);
+      setSelectedClassId(newItem.id);
+      setIsSaving(false);
+      setShowAssignModal(false);
+      setNewSubject({ name: '', level: '3ème C', weeklyHours: '4', coefficient: '4' });
+      setAssignSuccess(true);
+      setTimeout(() => setAssignSuccess(false), 4000);
+    }, 600);
   };
 
   return (
@@ -525,9 +530,11 @@ export const TeacherSubjects: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm cursor-pointer"
+                  disabled={isSaving}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
                 >
-                  Enregistrer l'assignation
+                  {isSaving && <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>}
+                  <span>Enregistrer l'assignation</span>
                 </button>
               </div>
             </form>

@@ -2,24 +2,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Global Safety Net
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Helper functions
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
     // User profiles & roles
     match /users/{userId} {
       allow read, write: if true;
@@ -32,34 +14,45 @@ service cloud.firestore {
 
     // Students
     match /students/{studentId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow read, write: if true;
+    }
+
+    // Classes
+    match /classes/{classId} {
+      allow read, write: if true;
+    }
+
+    // Activity Logs & Audit
+    match /activity_logs/{logId} {
+      allow read, write: if true;
+    }
+
+    // Circulars & Broadcasts
+    match /circulars/{circularId} {
+      allow read, write: if true;
     }
 
     // Timeline Events
     match /timeline_events/{eventId} {
-      allow read: if isSignedIn();
-      allow create, update, delete: if isSignedIn();
+      allow read, write: if true;
     }
 
     // Attendance Records
     match /attendance_records/{attendanceId} {
-      allow read: if isSignedIn();
-      allow create, update, delete: if isSignedIn();
+      allow read, write: if true;
     }
 
     // School Documents & Circulars
     match /school_documents/{documentId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow read, write: if true;
     }
 
     // Message threads
     match /message_threads/{threadId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if true;
     }
 
-    // Connection check
+    // Connection check & test
     match /test/{docId} {
       allow read, write: if true;
     }

@@ -22,13 +22,15 @@ import {
   Circular, 
   TimelineEvent, 
   AttendanceRecord, 
-  SchoolDocument 
+  SchoolDocument,
+  MessageThread 
 } from '../types';
 import { 
   STUDENTS_DATA, 
   TIMELINE_EVENTS_DATA, 
   ATTENDANCE_RECORDS_AWA, 
-  SCHOOL_DOCUMENTS_DATA 
+  SCHOOL_DOCUMENTS_DATA,
+  MESSAGE_THREADS_DATA 
 } from '../data/mockData';
 
 // Initial Classes Data for Seeding
@@ -423,6 +425,52 @@ export async function updateUserRoleInFirestore(
 }
 
 /**
+ * Direction creates a new Teacher account in Firestore
+ */
+export async function createTeacherInFirestore(teacherData: {
+  name: string;
+  firstName?: string;
+  lastName?: string;
+  email: string;
+  phone?: string;
+  assignedClasses: string[];
+  subjects: string[];
+}): Promise<UserAccount> {
+  const path = 'users';
+  const uid = `t_${Date.now()}`;
+  const newTeacher: UserAccount = {
+    uid,
+    email: teacherData.email.trim().toLowerCase(),
+    name: teacherData.name || `${teacherData.firstName || ''} ${teacherData.lastName || ''}`.trim(),
+    firstName: teacherData.firstName,
+    lastName: teacherData.lastName,
+    role: 'enseignant',
+    phone: teacherData.phone,
+    status: 'Actif',
+    assignedClasses: teacherData.assignedClasses,
+    subjects: teacherData.subjects,
+    createdAt: new Date().toISOString()
+  };
+
+  try {
+    await setDoc(doc(db, path, uid), newTeacher);
+    await logActivityInFirestore({
+      type: 'teacher_assigned',
+      title: 'Création & Enregistrement Enseignant',
+      description: `Le professeur ${newTeacher.name} (${newTeacher.email}) a été ajouté au corps enseignant pour les classes [${teacherData.assignedClasses.join(', ')}].`,
+      actorName: 'Direction Générale',
+      actorRole: 'direction',
+      targetName: newTeacher.name,
+      category: 'pedagogie'
+    });
+    return newTeacher;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `${path}/${uid}`);
+    return newTeacher;
+  }
+}
+
+/**
  * Direction associates Teacher to Classes & Subjects
  */
 export async function updateTeacherAssignments(
@@ -664,3 +712,128 @@ export async function updateTimelineEventInFirestore(eventId: string, updates: P
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
 }
+
+// Add a timeline event to Firestore
+export async function addTimelineEventInFirestore(event: TimelineEvent) {
+  const path = 'timeline_events';
+  try {
+    await setDoc(doc(db, path, event.id), event);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+// Subscribe to timeline events for a specific student (or school-wide events)
+export function subscribeToTimelineEvents(studentId: string, callback: (events: TimelineEvent[]) => void) {
+  const path = 'timeline_events';
+  try {
+    return onSnapshot(collection(db, path), (snap) => {
+      if (!snap.empty) {
+        const allEvents = snap.docs.map(d => ({ id: d.id, ...d.data() } as TimelineEvent));
+        const filtered = allEvents.filter(e => !e.studentId || e.studentId === studentId || e.studentId === 'all' || e.studentId === 'awa');
+        callback(filtered.length > 0 ? filtered : allEvents);
+      } else {
+        const filtered = TIMELINE_EVENTS_DATA.filter(e => !e.studentId || e.studentId === studentId || e.studentId === 'all');
+        callback(filtered.length > 0 ? filtered : TIMELINE_EVENTS_DATA);
+      }
+    }, (err) => {
+      console.warn('Timeline events snapshot error:', err);
+      callback(TIMELINE_EVENTS_DATA.filter(e => !e.studentId || e.studentId === studentId || e.studentId === 'all'));
+    });
+  } catch (e) {
+    callback(TIMELINE_EVENTS_DATA);
+    return () => {};
+  }
+}
+
+// Subscribe to attendance records for a specific student
+export function subscribeToAttendance(studentId: string, callback: (records: AttendanceRecord[]) => void) {
+  const path = 'attendance_records';
+  try {
+    return onSnapshot(collection(db, path), (snap) => {
+      if (!snap.empty) {
+        const allRecords = snap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceRecord));
+        const filtered = allRecords.filter(r => r.studentId === studentId);
+        callback(filtered);
+      } else {
+        callback(ATTENDANCE_RECORDS_AWA.filter(r => r.studentId === studentId || studentId === 'awa'));
+      }
+    }, (err) => {
+      console.warn('Attendance snapshot error:', err);
+      callback(ATTENDANCE_RECORDS_AWA);
+    });
+  } catch (e) {
+    callback(ATTENDANCE_RECORDS_AWA);
+    return () => {};
+  }
+}
+
+// Subscribe to school documents & circulars
+export function subscribeToSchoolDocuments(callback: (docs: SchoolDocument[]) => void) {
+  const path = 'school_documents';
+  try {
+    return onSnapshot(collection(db, path), (snap) => {
+      if (!snap.empty) {
+        callback(snap.docs.map(d => ({ id: d.id, ...d.data() } as SchoolDocument)));
+      } else {
+        callback(SCHOOL_DOCUMENTS_DATA);
+      }
+    }, (err) => {
+      console.warn('School documents snapshot error:', err);
+      callback(SCHOOL_DOCUMENTS_DATA);
+    });
+  } catch (e) {
+    callback(SCHOOL_DOCUMENTS_DATA);
+    return () => {};
+  }
+}
+
+// Subscribe to Message Threads
+export function subscribeToMessageThreads(callback: (threads: MessageThread[]) => void) {
+  const path = 'message_threads';
+  try {
+    return onSnapshot(collection(db, path), (snap) => {
+      if (!snap.empty) {
+        callback(snap.docs.map(d => ({ id: d.id, ...d.data() } as MessageThread)));
+      } else {
+        callback(MESSAGE_THREADS_DATA);
+      }
+    }, (err) => {
+      console.warn('Message threads snapshot error:', err);
+      callback(MESSAGE_THREADS_DATA);
+    });
+  } catch (e) {
+    callback(MESSAGE_THREADS_DATA);
+    return () => {};
+  }
+}
+
+// Send a message to a thread in Firestore
+export async function sendMessageToThreadInFirestore(threadId: string, message: any): Promise<void> {
+  const path = 'message_threads';
+  try {
+    const threadRef = doc(db, path, threadId);
+    const snap = await getDoc(threadRef);
+    if (snap.exists()) {
+      const data = snap.data() as MessageThread;
+      const updatedMessages = [...(data.messages || []), message];
+      await updateDoc(threadRef, {
+        messages: updatedMessages,
+        lastMessageTime: message.time || 'À l\'instant'
+      });
+    } else {
+      await setDoc(threadRef, {
+        id: threadId,
+        contactName: message.recipientName || 'Interlocuteur',
+        contactRole: message.recipientRole || 'Enseignant / Établissement',
+        lastMessageTime: message.time || 'À l\'instant',
+        unreadCount: 0,
+        studentContext: message.studentContext || 'Liaison scolaire',
+        messages: [message]
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `${path}/${threadId}`);
+  }
+}
+

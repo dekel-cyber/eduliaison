@@ -1,15 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, testFirestoreConnection } from './firebase/config';
-import { seedInitialDataIfEmpty } from './firebase/firestoreService';
+import { seedInitialDataIfEmpty, subscribeToStudents, subscribeToUsers } from './firebase/firestoreService';
 import { 
   getUserProfile, 
   logoutUser, 
   loadPersistentSession, 
   savePersistentSession, 
-  clearPersistentSession 
+  clearPersistentSession,
+  UserProfile 
 } from './firebase/authService';
-import { UserRole, Student } from './types';
+import { UserRole, Student, UserAccount } from './types';
 import { STUDENTS_DATA } from './data/mockData';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
@@ -31,6 +32,7 @@ import { TeacherScheduleLogbook } from './components/teacher/TeacherScheduleLogb
 import { TeacherGradebook } from './components/teacher/TeacherGradebook';
 import { TeacherSubjects } from './components/teacher/TeacherSubjects';
 import { TeacherLiaisonBook } from './components/teacher/TeacherLiaisonBook';
+import { TeacherMessaging } from './components/teacher/TeacherMessaging';
 
 // Admin / Direction Views
 import { AdminDashboard } from './components/admin/AdminDashboard';
@@ -58,9 +60,13 @@ export default function App() {
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(isResetUrl ? false : initialSession.isAuthenticated);
   const [currentUser, setCurrentUser] = useState<{ name?: string; email?: string } | null>(isResetUrl ? null : initialSession.user);
+  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
   const [currentRole, setCurrentRole] = useState<UserRole>(initialSession.role);
   const [activeTab, setActiveTab] = useState<string>(isResetUrl ? 'auth' : initialSession.tab);
+  
+  // Real-time Firestore master state
   const [students, setStudents] = useState<Student[]>(STUDENTS_DATA);
+  const [users, setUsers] = useState<UserAccount[]>([]);
   const [activeStudentId, setActiveStudentId] = useState<string>('awa');
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [authTargetRole, setAuthTargetRole] = useState<UserRole>('parent');
@@ -85,11 +91,18 @@ export default function App() {
     };
     initApp();
 
+    // Subscribe to live students & users from Firestore
+    const unsubStudents = subscribeToStudents((data) => setStudents(data));
+    const unsubUsers = subscribeToUsers((data) => setUsers(data));
+
     // Listen for Firebase Auth state changes and enforce persistent session synchronization
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
           const profile = await getUserProfile(user.uid);
+          if (profile) {
+            setCurrentUserProfile(profile);
+          }
           const name = profile?.name || user.displayName || user.email?.split('@')[0] || 'Utilisateur';
           const role = profile?.role || initialSession.role || 'parent';
           
@@ -98,7 +111,6 @@ export default function App() {
           setCurrentRole(role);
 
           setActiveTab(prevTab => {
-            // If the user was on landing or auth screen, redirect directly to their role dashboard
             let nextTab = prevTab;
             if (prevTab === 'landing' || prevTab === 'auth') {
               nextTab = getDefaultDashboardForRole(role);
@@ -110,18 +122,49 @@ export default function App() {
           console.warn('Error reading profile on auth state change:', e);
         }
       } else {
-        // If there's no active Firebase user and no saved local authentication
         if (!localStorage.getItem('eduliaison_is_authenticated')) {
           setIsAuthenticated(false);
           setCurrentUser(null);
+          setCurrentUserProfile(null);
         }
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubStudents();
+      unsubUsers();
+      unsubscribeAuth();
+    };
   }, []);
 
-  const activeStudent = students.find(s => s.id === activeStudentId) || students[0];
+  // Compute children of the authenticated Parent
+  const parentStudents = useMemo(() => {
+    if (currentRole !== 'parent') return students;
+    const userEmail = currentUser?.email?.toLowerCase().trim();
+    const userUid = auth.currentUser?.uid || currentUserProfile?.uid;
+
+    const matched = students.filter(s => {
+      const matchesUid = userUid && s.parentId === userUid;
+      const matchesEmail = userEmail && s.parentEmail && s.parentEmail.toLowerCase().trim() === userEmail;
+      const matchesChildrenList = currentUserProfile && (currentUserProfile as any).childrenIds?.includes(s.id);
+      return matchesUid || matchesEmail || matchesChildrenList;
+    });
+
+    if (matched.length > 0) return matched;
+    return students;
+  }, [students, currentRole, currentUser, currentUserProfile]);
+
+  // Keep activeStudentId valid
+  useEffect(() => {
+    if (currentRole === 'parent' && parentStudents.length > 0) {
+      if (!parentStudents.some(s => s.id === activeStudentId)) {
+        setActiveStudentId(parentStudents[0].id);
+      }
+    }
+  }, [parentStudents, currentRole, activeStudentId]);
+
+  const displayedStudents = currentRole === 'parent' ? parentStudents : students;
+  const activeStudent = displayedStudents.find(s => s.id === activeStudentId) || displayedStudents[0] || students[0];
 
   const handleSelectStudent = (studentId: string) => {
     setActiveStudentId(studentId);
@@ -156,6 +199,7 @@ export default function App() {
     clearPersistentSession();
     setIsAuthenticated(false);
     setCurrentUser(null);
+    setCurrentUserProfile(null);
     setActiveTab('landing');
   };
 
@@ -166,7 +210,6 @@ export default function App() {
       return;
     }
     if (!isAuthenticated && tab !== 'auth') {
-      // If not authenticated, redirect to login
       handleOpenAuth('login');
       return;
     }
@@ -176,7 +219,7 @@ export default function App() {
     }
   };
 
-  // Handle Role Switch in Header (Demo & multi-role support)
+  // Handle Role Switch in Header
   const handleRoleChange = (role: UserRole) => {
     const newTab = getDefaultDashboardForRole(role);
     setCurrentRole(role);
@@ -186,15 +229,18 @@ export default function App() {
     }
   };
 
+  // Current Teacher Profile if logged in as teacher
+  const currentTeacherAccount = users.find(u => u.email?.toLowerCase() === currentUser?.email?.toLowerCase() || u.uid === auth.currentUser?.uid);
+
   return (
     <div className="min-h-screen flex flex-col bg-[#faf8ff] text-[#131b2e] selection:bg-[#c3c0ff] selection:text-[#0f0069]">
-      {/* Authenticated Global Header (Visible when logged in and not on auth/landing) */}
+      {/* Authenticated Global Header */}
       {isAuthenticated && activeTab !== 'auth' && activeTab !== 'landing' && (
         <Header
           currentRole={currentRole}
           setCurrentRole={handleRoleChange}
           activeStudent={activeStudent}
-          allStudents={students}
+          allStudents={displayedStudents}
           onSelectStudent={handleSelectStudent}
           activeTab={activeTab}
           setActiveTab={handleNavigateTab}
@@ -206,7 +252,7 @@ export default function App() {
 
       {/* Main Content View Container */}
       <main className={`flex-1 flex flex-col ${isAuthenticated && activeTab !== 'landing' && activeTab !== 'auth' ? 'pt-16 pb-16 xl:pb-0' : ''}`}>
-        {/* 1. Landing Page (Default initial landing when not logged in) */}
+        {/* 1. Landing Page */}
         {activeTab === 'landing' && (
           <LandingPage
             onOpenAuth={handleOpenAuth}
@@ -220,7 +266,7 @@ export default function App() {
           />
         )}
 
-        {/* 2. Authentication Page (Login / Register) */}
+        {/* 2. Authentication Page */}
         {activeTab === 'auth' && (
           <AuthPage
             initialMode={authMode}
@@ -239,9 +285,10 @@ export default function App() {
         {isAuthenticated && activeTab === 'parent-dashboard' && (
           <ParentDashboard
             activeStudent={activeStudent}
-            allStudents={students}
+            allStudents={displayedStudents}
             onSelectStudent={handleSelectStudent}
             onNavigateTab={handleNavigateTab}
+            userName={currentUser?.name}
           />
         )}
 
@@ -277,6 +324,7 @@ export default function App() {
           <ParentMessaging
             activeStudent={activeStudent}
             onNavigateTab={handleNavigateTab}
+            userName={currentUser?.name}
           />
         )}
 
@@ -284,6 +332,13 @@ export default function App() {
         {isAuthenticated && activeTab === 'teacher-dashboard' && (
           <TeacherDashboard
             onNavigateTab={handleNavigateTab}
+            userName={currentUser?.name}
+            currentTeacher={currentTeacherAccount || {
+              name: currentUser?.name || 'Professeur',
+              email: currentUser?.email,
+              assignedClasses: ['3ème A', '3ème B'],
+              subjects: ['Français & Littérature']
+            }}
           />
         )}
 
@@ -303,6 +358,19 @@ export default function App() {
           <TeacherLiaisonBook />
         )}
 
+        {isAuthenticated && activeTab === 'teacher-messaging' && (
+          <TeacherMessaging
+            onNavigateTab={handleNavigateTab}
+            userName={currentUser?.name}
+            currentTeacher={currentTeacherAccount || {
+              name: currentUser?.name || 'Professeur',
+              email: currentUser?.email,
+              assignedClasses: ['3ème A', '3ème B'],
+              subjects: ['Français & Littérature']
+            }}
+          />
+        )}
+
         {/* 5. Protected Admin & Direction Portal Views */}
         {isAuthenticated && activeTab === 'admin-dashboard' && (
           <AdminDashboard />
@@ -318,7 +386,7 @@ export default function App() {
         />
       )}
 
-      {/* Global Footer (Visible on landing and main pages) */}
+      {/* Global Footer */}
       {(activeTab === 'landing' || activeTab === 'auth') && <Footer />}
     </div>
   );

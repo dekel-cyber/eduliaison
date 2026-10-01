@@ -15,6 +15,7 @@ export const ParentDocuments: React.FC<ParentDocumentsProps> = ({
   const [isSignModalOpen, setIsSignModalOpen] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
+  const [isSigning, setIsSigning] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -26,10 +27,14 @@ export const ParentDocuments: React.FC<ParentDocumentsProps> = ({
 
   const handleSignSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!agreeTerms) return;
-    setIsSignModalOpen(false);
-    setAcknowledged(true);
-    showToast("Accusé de réception validé et archivé avec succès.");
+    if (!agreeTerms || isSigning) return;
+    setIsSigning(true);
+    setTimeout(() => {
+      setIsSigning(false);
+      setIsSignModalOpen(false);
+      setAcknowledged(true);
+      showToast("Accusé de réception validé et archivé avec succès.");
+    }, 600);
   };
 
   const handleDownloadDoc = (title: string) => {
@@ -490,12 +495,16 @@ export const ParentDocuments: React.FC<ParentDocumentsProps> = ({
                   </button>
                   <button 
                     className={`px-5 py-2 rounded-xl text-white text-xs font-bold transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer ${
-                      agreeTerms ? 'bg-[#3525cd] hover:bg-[#4f46e5]' : 'bg-[#777587] opacity-60 cursor-not-allowed'
+                      agreeTerms && !isSigning ? 'bg-[#3525cd] hover:bg-[#4f46e5]' : 'bg-[#777587] opacity-60 cursor-not-allowed'
                     }`} 
                     type="submit"
-                    disabled={!agreeTerms}
+                    disabled={!agreeTerms || isSigning}
                   >
-                    <span className="material-symbols-outlined text-[18px]">verified</span>
+                    {isSigning ? (
+                      <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                    ) : (
+                      <span className="material-symbols-outlined text-[18px]">verified</span>
+                    )}
                     <span>Signer électroniquement</span>
                   </button>
                 </div>

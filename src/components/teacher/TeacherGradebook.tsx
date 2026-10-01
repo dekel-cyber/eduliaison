@@ -469,14 +469,18 @@ export const TeacherGradebook: React.FC = () => {
               <button 
                 onClick={handleSave}
                 disabled={saving}
-                className="px-4 py-2 rounded-xl bg-[#3525cd] text-white text-xs font-bold hover:bg-[#4f46e5] active:scale-95 transition-all shadow-sm flex items-center gap-1.5 cursor-pointer" 
+                className="px-4 py-2 rounded-xl bg-[#3525cd] text-white text-xs font-bold hover:bg-[#4f46e5] disabled:opacity-60 active:scale-95 transition-all shadow-sm flex items-center gap-1.5 cursor-pointer" 
                 id="save-button" 
                 type="button"
               >
-                <span className={`material-symbols-outlined text-[18px] ${saving ? 'animate-spin' : ''}`}>
-                  {saving ? 'sync' : saveSuccess ? 'done_all' : 'check'}
-                </span>
-                <span>{saving ? 'Enregistrement...' : saveSuccess ? 'Enregistré avec succès !' : 'Sauvegarder les modifications'}</span>
+                {saving ? (
+                  <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                ) : saveSuccess ? (
+                  <span className="material-symbols-outlined text-[18px]">done_all</span>
+                ) : (
+                  <span className="material-symbols-outlined text-[18px]">check</span>
+                )}
+                <span>{saveSuccess ? 'Enregistré avec succès !' : 'Sauvegarder les modifications'}</span>
               </button>
             </div>
           </div>

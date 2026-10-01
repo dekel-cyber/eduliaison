@@ -7,12 +7,19 @@
       "properties": {
         "uid": { "type": "string", "maxLength": 128 },
         "email": { "type": "string", "format": "email", "maxLength": 150 },
-        "role": { "type": "string", "enum": ["parent", "enseignant", "direction", "eleve"] },
+        "role": { "type": "string", "enum": ["parent", "enseignant", "direction", "eleve", "user"] },
         "name": { "type": "string", "maxLength": 100 },
+        "firstName": { "type": "string", "maxLength": 100 },
+        "lastName": { "type": "string", "maxLength": 100 },
         "phone": { "type": "string", "maxLength": 30 },
-        "createdAt": { "type": "string" }
+        "status": { "type": "string", "enum": ["Actif", "En attente", "Suspendu"] },
+        "assignedClasses": { "type": "array", "items": { "type": "string" } },
+        "subjects": { "type": "array", "items": { "type": "string" } },
+        "childrenIds": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
       },
-      "required": ["uid", "email", "role", "name"]
+      "required": ["uid", "email", "role"]
     },
     "Student": {
       "title": "Student",
@@ -22,8 +29,8 @@
         "id": { "type": "string", "maxLength": 100 },
         "firstName": { "type": "string", "maxLength": 60 },
         "lastName": { "type": "string", "maxLength": 60 },
-        "class": { "type": "string", "maxLength": 20 },
-        "level": { "type": "string", "maxLength": 20 },
+        "class": { "type": "string", "maxLength": 30 },
+        "level": { "type": "string", "maxLength": 30 },
         "matricule": { "type": "string", "maxLength": 40 },
         "photoUrl": { "type": "string", "maxLength": 500 },
         "generalAverage": { "type": "number" },
@@ -34,9 +41,63 @@
         "parentName": { "type": "string", "maxLength": 100 },
         "parentPhone": { "type": "string", "maxLength": 30 },
         "parentEmail": { "type": "string", "format": "email", "maxLength": 150 },
+        "parentId": { "type": "string", "maxLength": 128 },
+        "gender": { "type": "string", "enum": ["M", "F"] },
+        "birthDate": { "type": "string", "maxLength": 30 },
+        "status": { "type": "string", "maxLength": 30 },
         "isDelegue": { "type": "boolean" }
       },
       "required": ["id", "firstName", "lastName", "class", "matricule"]
+    },
+    "SchoolClass": {
+      "title": "SchoolClass",
+      "description": "Academic class in the school",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100 },
+        "name": { "type": "string", "maxLength": 50 },
+        "level": { "type": "string", "maxLength": 50 },
+        "room": { "type": "string", "maxLength": 100 },
+        "academicYear": { "type": "string", "maxLength": 20 },
+        "studentCount": { "type": "number" },
+        "mainTeacherId": { "type": "string", "maxLength": 100 },
+        "mainTeacherName": { "type": "string", "maxLength": 100 },
+        "subjects": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "level", "room"]
+    },
+    "ActivityLog": {
+      "title": "ActivityLog",
+      "description": "Audit log of institutional platform operations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100 },
+        "type": { "type": "string", "maxLength": 50 },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "actorName": { "type": "string", "maxLength": 100 },
+        "actorRole": { "type": "string", "maxLength": 50 },
+        "targetName": { "type": "string", "maxLength": 100 },
+        "timestamp": { "type": "string", "maxLength": 50 },
+        "category": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "title", "description", "actorName", "timestamp"]
+    },
+    "Circular": {
+      "title": "Circular",
+      "description": "Administrative circular broadcast",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100 },
+        "title": { "type": "string", "maxLength": 200 },
+        "target": { "type": "string", "maxLength": 100 },
+        "message": { "type": "string", "maxLength": 2000 },
+        "urgent": { "type": "boolean" },
+        "author": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "target", "message"]
     },
     "TimelineEvent": {
       "title": "TimelineEvent",
@@ -108,6 +169,18 @@
     "/students/{studentId}": {
       "schema": { "$ref": "#/entities/Student" },
       "description": "Student master records and academic indicators"
+    },
+    "/classes/{classId}": {
+      "schema": { "$ref": "#/entities/SchoolClass" },
+      "description": "Classes created and managed by Direction"
+    },
+    "/activity_logs/{logId}": {
+      "schema": { "$ref": "#/entities/ActivityLog" },
+      "description": "Audit and activity trail of all school operations"
+    },
+    "/circulars/{circularId}": {
+      "schema": { "$ref": "#/entities/Circular" },
+      "description": "Circular announcements sent to parents and teachers"
     },
     "/timeline_events/{eventId}": {
       "schema": { "$ref": "#/entities/TimelineEvent" },

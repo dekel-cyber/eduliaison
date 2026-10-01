@@ -220,12 +220,14 @@ export const ParentTimeline: React.FC<ParentTimelineProps> = ({
                       <button 
                         onClick={handleSign}
                         disabled={isSigning}
-                        className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-[#fd6a49] hover:bg-[#ae3115] text-white font-semibold text-xs shadow-sm transition-transform active:scale-95 cursor-pointer"
+                        className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-[#fd6a49] hover:bg-[#ae3115] disabled:opacity-60 text-white font-semibold text-xs shadow-sm transition-transform active:scale-95 cursor-pointer"
                       >
-                        <span className="material-symbols-outlined text-[20px]">
-                          {isSigning ? 'refresh' : 'fingerprint'}
-                        </span>
-                        <span>{isSigning ? 'Signature en cours...' : 'Viser & Signer'}</span>
+                        {isSigning ? (
+                          <span className="material-symbols-outlined text-[20px] animate-spin">progress_activity</span>
+                        ) : (
+                          <span className="material-symbols-outlined text-[20px]">fingerprint</span>
+                        )}
+                        <span>Viser & Signer</span>
                       </button>
                     ) : (
                       <span className="text-[#005338] text-xs flex items-center gap-1 font-bold bg-[#6ffbbe] px-3 py-1.5 rounded-lg">

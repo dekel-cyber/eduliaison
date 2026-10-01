@@ -28,8 +28,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         { id: 'teacher-dashboard', label: 'Accueil', icon: 'dashboard' },
         { id: 'teacher-gradebook', label: 'Notes', icon: 'fact_check' },
         { id: 'teacher-schedule', label: 'Cahier', icon: 'menu_book' },
-        { id: 'teacher-liaison', label: 'Liaison', icon: 'forum' },
-        { id: 'teacher-subjects', label: 'Matières', icon: 'auto_stories' }
+        { id: 'teacher-messaging', label: 'Messages', icon: 'forum' },
+        { id: 'teacher-liaison', label: 'Liaison', icon: 'edit_note' }
       ];
     } else {
       return [

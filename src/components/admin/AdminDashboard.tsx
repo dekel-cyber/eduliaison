@@ -18,9 +18,9 @@ import {
   updateClassInFirestore,
   deleteClassInFirestore,
   updateUserRoleInFirestore,
+  createTeacherInFirestore,
   updateTeacherAssignments,
   associateParentToStudentInFirestore,
-  associateStudentToClassInFirestore,
   createCircularInFirestore
 } from '../../firebase/firestoreService';
 
@@ -37,27 +37,47 @@ export const AdminDashboard: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('all');
+  const [auditCategoryFilter, setAuditCategoryFilter] = useState<string>('all');
 
-  // Modals
+  // Modals - Students
   const [showCreateStudentModal, setShowCreateStudentModal] = useState(false);
   const [showEditStudentModal, setShowEditStudentModal] = useState(false);
   const [selectedStudentForEdit, setSelectedStudentForEdit] = useState<Student | null>(null);
   const [showStudentDetailModal, setShowStudentDetailModal] = useState(false);
   const [selectedStudentForDetail, setSelectedStudentForDetail] = useState<Student | null>(null);
 
+  // Modals - Classes
   const [showCreateClassModal, setShowCreateClassModal] = useState(false);
   const [showEditClassModal, setShowEditClassModal] = useState(false);
   const [selectedClassForEdit, setSelectedClassForEdit] = useState<SchoolClass | null>(null);
 
+  // Modals - Roles & Teachers
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [selectedUserForRole, setSelectedUserForRole] = useState<UserAccount | null>(null);
 
+  const [showCreateTeacherModal, setShowCreateTeacherModal] = useState(false);
+  const [teacherCreateForm, setTeacherCreateForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    assignedClasses: [] as string[],
+    subjects: ['Français'] as string[]
+  });
+
   const [showTeacherAssignmentModal, setShowTeacherAssignmentModal] = useState(false);
   const [selectedTeacherForAssignment, setSelectedTeacherForAssignment] = useState<UserAccount | null>(null);
+  const [selectedTeacherClasses, setSelectedTeacherClasses] = useState<string[]>([]);
+  const [selectedTeacherSubjects, setSelectedTeacherSubjects] = useState<string[]>([]);
 
+  // Modals - Parent Association
   const [showAssociateParentModal, setShowAssociateParentModal] = useState(false);
   const [selectedStudentForParentAssoc, setSelectedStudentForParentAssoc] = useState<Student | null>(null);
+  const [studentSearchQueryForAssoc, setStudentSearchQueryForAssoc] = useState('');
+  const [parentSearchQuery, setParentSearchQuery] = useState('');
+  const [selectedParentAccount, setSelectedParentAccount] = useState<UserAccount | null>(null);
 
+  // Modals - Circular & Emergency
   const [showCircularModal, setShowCircularModal] = useState(false);
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
 
@@ -90,18 +110,25 @@ export const AdminDashboard: React.FC = () => {
     studentCount: 40
   });
 
-  // Form States - Role & Teacher
+  // Form States - Role
   const [roleForm, setRoleForm] = useState<{ role: UserRole; status: 'Actif' | 'En attente' | 'Suspendu' }>({
     role: 'parent',
     status: 'Actif'
   });
-  const [selectedTeacherClasses, setSelectedTeacherClasses] = useState<string[]>([]);
-  const [selectedTeacherSubjects, setSelectedTeacherSubjects] = useState<string[]>([]);
-  const [selectedParentIdForAssoc, setSelectedParentIdForAssoc] = useState<string>('');
 
   // Form States - Circular & Alert
   const [emergencyText, setEmergencyText] = useState('');
   const [circularData, setCircularData] = useState({ title: '', target: 'all', message: '', urgent: false });
+
+  // Asynchronous action loading states for spinners
+  const [isSavingStudent, setIsSavingStudent] = useState(false);
+  const [isSavingClass, setIsSavingClass] = useState(false);
+  const [isSavingTeacher, setIsSavingTeacher] = useState(false);
+  const [isSavingTeacherAssignments, setIsSavingTeacherAssignments] = useState(false);
+  const [isSavingRole, setIsSavingRole] = useState(false);
+  const [isSavingAssoc, setIsSavingAssoc] = useState(false);
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Subscribe to real Firestore database
   useEffect(() => {
@@ -145,18 +172,19 @@ export const AdminDashboard: React.FC = () => {
   // Handler: Create Student
   const handleCreateStudent = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSavingStudent(true);
     try {
       const created = await createStudentInFirestore({
-        firstName: studentForm.firstName,
-        lastName: studentForm.lastName,
-        matricule: studentForm.matricule || `MAT-2026-${Math.floor(100 + Math.random() * 900)}`,
+        firstName: studentForm.firstName.trim(),
+        lastName: studentForm.lastName.trim(),
+        matricule: studentForm.matricule.trim() || `MAT-2026-${Math.floor(100 + Math.random() * 900)}`,
         class: studentForm.class,
         level: studentForm.level,
         gender: studentForm.gender,
         birthDate: studentForm.birthDate,
-        parentName: studentForm.parentName,
-        parentEmail: studentForm.parentEmail,
-        parentPhone: studentForm.parentPhone,
+        parentName: studentForm.parentName.trim(),
+        parentEmail: studentForm.parentEmail.trim(),
+        parentPhone: studentForm.parentPhone.trim(),
         generalAverage: Number(studentForm.generalAverage) || 14.0,
         status: studentForm.status
       });
@@ -176,9 +204,11 @@ export const AdminDashboard: React.FC = () => {
         generalAverage: 14.5,
         status: 'En règle'
       });
-      showToast(`Élève ${created.firstName} ${created.lastName} enregistré avec succès dans la base de données !`);
+      showToast(`Élève ${created.firstName} ${created.lastName} enregistré avec succès dans la base Firestore !`);
     } catch (err: any) {
       showToast(err.message || 'Erreur lors de la création de l\'élève', 'error');
+    } finally {
+      setIsSavingStudent(false);
     }
   };
 
@@ -187,38 +217,44 @@ export const AdminDashboard: React.FC = () => {
     e.preventDefault();
     if (!selectedStudentForEdit) return;
 
+    setIsSavingStudent(true);
     try {
       await updateStudentInFirestore(selectedStudentForEdit.id, {
-        firstName: studentForm.firstName,
-        lastName: studentForm.lastName,
-        matricule: studentForm.matricule,
+        firstName: studentForm.firstName.trim(),
+        lastName: studentForm.lastName.trim(),
+        matricule: studentForm.matricule.trim(),
         class: studentForm.class,
         level: studentForm.level,
         gender: studentForm.gender,
         birthDate: studentForm.birthDate,
-        parentName: studentForm.parentName,
-        parentEmail: studentForm.parentEmail,
-        parentPhone: studentForm.parentPhone,
+        parentName: studentForm.parentName.trim(),
+        parentEmail: studentForm.parentEmail.trim(),
+        parentPhone: studentForm.parentPhone.trim(),
         generalAverage: Number(studentForm.generalAverage),
         status: studentForm.status
       });
 
       setShowEditStudentModal(false);
       setSelectedStudentForEdit(null);
-      showToast(`Fiche de l'élève mise à jour avec succès.`);
+      showToast(`Fiche de l'élève mise à jour avec succès dans Firestore.`);
     } catch (err: any) {
       showToast(err.message || 'Erreur lors de la modification', 'error');
+    } finally {
+      setIsSavingStudent(false);
     }
   };
 
   // Handler: Delete Student
   const handleDeleteStudent = async (student: Student) => {
-    if (window.confirm(`Confirmez-vous la suppression / radiation de l'élève ${student.firstName} ${student.lastName} (${student.matricule}) ?`)) {
+    if (window.confirm(`Confirmez-vous la radiation définitive de l'élève ${student.firstName} ${student.lastName} (${student.matricule}) ?`)) {
+      setDeletingId(student.id);
       try {
         await deleteStudentInFirestore(student.id, `${student.firstName} ${student.lastName}`);
-        showToast(`Élève ${student.firstName} ${student.lastName} retiré du registre.`);
+        showToast(`Élève ${student.firstName} ${student.lastName} radié de la base de données.`);
       } catch (err: any) {
         showToast(err.message || 'Erreur de suppression', 'error');
+      } finally {
+        setDeletingId(null);
       }
     }
   };
@@ -226,13 +262,14 @@ export const AdminDashboard: React.FC = () => {
   // Handler: Create Class
   const handleCreateClass = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSavingClass(true);
     try {
       const newCls = await createClassInFirestore({
-        name: classForm.name,
-        level: classForm.level,
-        room: classForm.room,
+        name: classForm.name.trim(),
+        level: classForm.level.trim(),
+        room: classForm.room.trim(),
         academicYear: classForm.academicYear,
-        mainTeacherName: classForm.mainTeacherName || 'À assigner',
+        mainTeacherName: classForm.mainTeacherName.trim() || 'À assigner',
         studentCount: Number(classForm.studentCount) || 0
       });
 
@@ -245,9 +282,11 @@ export const AdminDashboard: React.FC = () => {
         mainTeacherName: '',
         studentCount: 40
       });
-      showToast(`Classe ${newCls.name} créée avec succès.`);
+      showToast(`Classe ${newCls.name} créée avec succès dans la base !`);
     } catch (err: any) {
       showToast(err.message || 'Erreur lors de la création de la classe', 'error');
+    } finally {
+      setIsSavingClass(false);
     }
   };
 
@@ -256,33 +295,71 @@ export const AdminDashboard: React.FC = () => {
     e.preventDefault();
     if (!selectedClassForEdit) return;
 
+    setIsSavingClass(true);
     try {
       await updateClassInFirestore(selectedClassForEdit.id, {
-        name: classForm.name,
-        level: classForm.level,
-        room: classForm.room,
+        name: classForm.name.trim(),
+        level: classForm.level.trim(),
+        room: classForm.room.trim(),
         academicYear: classForm.academicYear,
-        mainTeacherName: classForm.mainTeacherName,
+        mainTeacherName: classForm.mainTeacherName.trim(),
         studentCount: Number(classForm.studentCount)
       });
 
       setShowEditClassModal(false);
       setSelectedClassForEdit(null);
-      showToast(`Classe ${classForm.name} mise à jour.`);
+      showToast(`Classe ${classForm.name} mise à jour avec succès.`);
     } catch (err: any) {
       showToast(err.message || 'Erreur de mise à jour', 'error');
+    } finally {
+      setIsSavingClass(false);
     }
   };
 
   // Handler: Delete Class
   const handleDeleteClass = async (cls: SchoolClass) => {
-    if (window.confirm(`Confirmez-vous la fermeture / suppression de la classe ${cls.name} ?`)) {
+    if (window.confirm(`Confirmez-vous la suppression de la classe ${cls.name} ?`)) {
+      setDeletingId(cls.id);
       try {
         await deleteClassInFirestore(cls.id, cls.name);
-        showToast(`Classe ${cls.name} archivée/supprimée.`);
+        showToast(`Classe ${cls.name} supprimée avec succès.`);
       } catch (err: any) {
         showToast(err.message || 'Erreur de suppression', 'error');
+      } finally {
+        setDeletingId(null);
       }
+    }
+  };
+
+  // Handler: Create Teacher
+  const handleCreateTeacher = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingTeacher(true);
+    try {
+      const newT = await createTeacherInFirestore({
+        name: `${teacherCreateForm.firstName} ${teacherCreateForm.lastName}`.trim(),
+        firstName: teacherCreateForm.firstName.trim(),
+        lastName: teacherCreateForm.lastName.trim(),
+        email: teacherCreateForm.email.trim(),
+        phone: teacherCreateForm.phone.trim(),
+        assignedClasses: teacherCreateForm.assignedClasses,
+        subjects: teacherCreateForm.subjects
+      });
+
+      setShowCreateTeacherModal(false);
+      setTeacherCreateForm({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        assignedClasses: [],
+        subjects: ['Français']
+      });
+      showToast(`Professeur ${newT.name} ajouté avec succès !`);
+    } catch (err: any) {
+      showToast(err.message || 'Erreur lors de l\'ajout du professeur', 'error');
+    } finally {
+      setIsSavingTeacher(false);
     }
   };
 
@@ -291,6 +368,7 @@ export const AdminDashboard: React.FC = () => {
     e.preventDefault();
     if (!selectedUserForRole) return;
 
+    setIsSavingRole(true);
     try {
       await updateUserRoleInFirestore(
         selectedUserForRole.uid, 
@@ -304,6 +382,8 @@ export const AdminDashboard: React.FC = () => {
       showToast(`Rôle ${roleForm.role.toUpperCase()} attribué au compte ${selectedUserForRole.email}.`);
     } catch (err: any) {
       showToast(err.message || 'Erreur d\'attribution de rôle', 'error');
+    } finally {
+      setIsSavingRole(false);
     }
   };
 
@@ -312,6 +392,7 @@ export const AdminDashboard: React.FC = () => {
     e.preventDefault();
     if (!selectedTeacherForAssignment) return;
 
+    setIsSavingTeacherAssignments(true);
     try {
       await updateTeacherAssignments(
         selectedTeacherForAssignment.uid,
@@ -322,43 +403,47 @@ export const AdminDashboard: React.FC = () => {
 
       setShowTeacherAssignmentModal(false);
       setSelectedTeacherForAssignment(null);
-      showToast(`Affectations mises à jour pour ${selectedTeacherForAssignment.name}.`);
+      showToast(`Affectations pédagogiques mises à jour pour ${selectedTeacherForAssignment.name}.`);
     } catch (err: any) {
       showToast(err.message || 'Erreur d\'affectation', 'error');
+    } finally {
+      setIsSavingTeacherAssignments(false);
     }
   };
 
   // Handler: Associate Parent to Student
   const handleAssociateParentToStudent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedStudentForParentAssoc || !selectedParentIdForAssoc) return;
-
-    const parentAccount = users.find(u => u.uid === selectedParentIdForAssoc);
-    if (!parentAccount) {
-      showToast('Compte parent introuvable', 'error');
+    if (!selectedStudentForParentAssoc || !selectedParentAccount) {
+      showToast('Veuillez sélectionner un parent pour cette association', 'error');
       return;
     }
 
+    setIsSavingAssoc(true);
     try {
       await associateParentToStudentInFirestore(selectedStudentForParentAssoc.id, {
-        uid: parentAccount.uid,
-        name: parentAccount.name || `${parentAccount.firstName || ''} ${parentAccount.lastName || ''}`.trim() || parentAccount.email,
-        email: parentAccount.email,
-        phone: parentAccount.phone
+        uid: selectedParentAccount.uid,
+        name: selectedParentAccount.name || `${selectedParentAccount.firstName || ''} ${selectedParentAccount.lastName || ''}`.trim() || selectedParentAccount.email,
+        email: selectedParentAccount.email,
+        phone: selectedParentAccount.phone
       });
 
       setShowAssociateParentModal(false);
       setSelectedStudentForParentAssoc(null);
-      setSelectedParentIdForAssoc('');
-      showToast(`Parent ${parentAccount.name || parentAccount.email} associé à l'élève ${selectedStudentForParentAssoc.firstName} ${selectedStudentForParentAssoc.lastName} !`);
+      setSelectedParentAccount(null);
+      setParentSearchQuery('');
+      showToast(`Parent ${selectedParentAccount.name || selectedParentAccount.email} associé à l'élève ${selectedStudentForParentAssoc.firstName} ${selectedStudentForParentAssoc.lastName} !`);
     } catch (err: any) {
       showToast(err.message || 'Erreur lors de l\'association', 'error');
+    } finally {
+      setIsSavingAssoc(false);
     }
   };
 
   // Handler: Broadcast Emergency Alert
   const handleEmergencyAlert = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsBroadcasting(true);
     try {
       await createCircularInFirestore({
         title: '🚨 ALERTE URGENCE ÉTABLISSEMENT',
@@ -373,12 +458,15 @@ export const AdminDashboard: React.FC = () => {
       showToast('Alerte d\'urgence SMS & Push diffusée avec succès à toutes les familles et enseignants !');
     } catch (err: any) {
       showToast(err.message || 'Erreur d\'envoi de l\'alerte', 'error');
+    } finally {
+      setIsBroadcasting(false);
     }
   };
 
   // Handler: Broadcast Circular
   const handlePublishCircular = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsBroadcasting(true);
     try {
       await createCircularInFirestore({
         title: circularData.title,
@@ -393,16 +481,20 @@ export const AdminDashboard: React.FC = () => {
       showToast('Circulaire officielle publiée et notifiée sur les espaces concernés.');
     } catch (err: any) {
       showToast(err.message || 'Erreur lors de la publication', 'error');
+    } finally {
+      setIsBroadcasting(false);
     }
   };
 
   // Filtered lists
   const filteredStudents = students.filter(s => {
+    const query = searchTerm.toLowerCase();
     const matchesSearch = 
-      s.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.matricule?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.parentName?.toLowerCase().includes(searchTerm.toLowerCase());
+      s.firstName?.toLowerCase().includes(query) ||
+      s.lastName?.toLowerCase().includes(query) ||
+      s.matricule?.toLowerCase().includes(query) ||
+      s.parentName?.toLowerCase().includes(query) ||
+      s.parentPhone?.includes(query);
     const matchesClass = selectedClassFilter === 'all' || s.class === selectedClassFilter;
     return matchesSearch && matchesClass;
   });
@@ -410,7 +502,8 @@ export const AdminDashboard: React.FC = () => {
   const filteredTeachers = users.filter(u => u.role === 'enseignant' && (
     u.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.phone?.includes(searchTerm)
+    u.phone?.includes(searchTerm) ||
+    u.assignedClasses?.some(c => c.toLowerCase().includes(searchTerm.toLowerCase()))
   ));
 
   const filteredAccounts = users.filter(u => {
@@ -422,14 +515,47 @@ export const AdminDashboard: React.FC = () => {
     return matchesSearch && matchesRole;
   });
 
-  const parentsList = users.filter(u => u.role === 'parent' || u.role === 'user');
+  // Students list for association search
+  const filteredStudentsForAssoc = students.filter(s => {
+    const q = studentSearchQueryForAssoc.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      s.firstName?.toLowerCase().includes(q) ||
+      s.lastName?.toLowerCase().includes(q) ||
+      s.matricule?.toLowerCase().includes(q) ||
+      s.class?.toLowerCase().includes(q)
+    );
+  });
+
+  // Parents list with search by name, email, or phone
+  const eligibleParents = users.filter(u => u.role === 'parent' || u.role === 'user');
+  const filteredParentSearchResults = eligibleParents.filter(p => {
+    const q = parentSearchQuery.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      p.name?.toLowerCase().includes(q) ||
+      p.email?.toLowerCase().includes(q) ||
+      (p.phone && p.phone.toLowerCase().includes(q))
+    );
+  });
+
+  const filteredActivityLogs = activityLogs.filter(log => {
+    const matchesCategory = auditCategoryFilter === 'all' || log.category === auditCategoryFilter;
+    const matchesSearch = 
+      !searchTerm ||
+      log.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.actorName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.targetName?.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
   return (
     <div className="w-full max-w-7xl mx-auto px-4 sm:px-8 py-6 space-y-6 font-['Plus_Jakarta_Sans',sans-serif] text-[#131b2e]">
       
       {/* Toast Confirmation */}
       {toastMessage && (
-        <div className={`p-4 rounded-xl border flex items-center justify-between text-xs sm:text-sm shadow-md animate-in fade-in slide-in-from-top-2 duration-200 ${
+        <div className={`p-4 rounded-2xl border flex items-center justify-between text-xs sm:text-sm shadow-lg animate-in fade-in slide-in-from-top-2 duration-200 ${
           toastMessage.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' :
           toastMessage.type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-900' :
           'bg-indigo-50 border-indigo-200 text-indigo-900'
@@ -524,7 +650,7 @@ export const AdminDashboard: React.FC = () => {
           <div className="my-2">
             <span className="text-3xl font-extrabold text-[#131b2e]">{totalTeachersCount}</span>
           </div>
-          <span className="text-[11px] text-[#006e4b] font-semibold">100% assignés</span>
+          <span className="text-[11px] text-[#006e4b] font-semibold">Assignations actives</span>
         </div>
 
         {/* Metric 4: Parents */}
@@ -642,7 +768,7 @@ export const AdminDashboard: React.FC = () => {
             </button>
           </div>
 
-          {/* Quick Add Buttons based on active tab */}
+          {/* Quick Action Buttons */}
           <div className="flex items-center gap-2 self-end lg:self-center">
             {activeTab === 'eleves' && (
               <button
@@ -663,6 +789,16 @@ export const AdminDashboard: React.FC = () => {
                 <span>Créer une Classe</span>
               </button>
             )}
+
+            {activeTab === 'profs' && (
+              <button
+                onClick={() => setShowCreateTeacherModal(true)}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#3525cd] to-[#fd6a49] text-white text-xs font-bold shadow-md hover:opacity-95 flex items-center gap-1.5 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px]">person_add_alt</span>
+                <span>Ajouter un Enseignant</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -673,10 +809,11 @@ export const AdminDashboard: React.FC = () => {
             <input
               type="text"
               placeholder={
-                activeTab === 'eleves' ? "Rechercher par nom d'élève, prénom, matricule..." :
+                activeTab === 'eleves' ? "Rechercher un élève par nom, prénom, matricule ou parent..." :
                 activeTab === 'classes' ? "Rechercher une classe, niveau, salle..." :
-                activeTab === 'profs' ? "Rechercher un professeur, matière, contact..." :
-                activeTab === 'comptes' ? "Rechercher un compte, email, nom..." :
+                activeTab === 'profs' ? "Rechercher un professeur, discipline, contact..." :
+                activeTab === 'comptes' ? "Rechercher un compte utilisateur, email, téléphone..." :
+                activeTab === 'activites' ? "Filtrer dans le journal des activités..." :
                 "Rechercher dans les données..."
               }
               value={searchTerm}
@@ -687,7 +824,7 @@ export const AdminDashboard: React.FC = () => {
 
           {activeTab === 'eleves' && (
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-[#464555] shrink-0">Filtrer par classe :</span>
+              <span className="text-xs font-bold text-[#464555] shrink-0">Classe :</span>
               <select
                 value={selectedClassFilter}
                 onChange={(e) => setSelectedClassFilter(e.target.value)}
@@ -711,9 +848,25 @@ export const AdminDashboard: React.FC = () => {
               >
                 <option value="all">Tous les rôles</option>
                 <option value="user">Utilisateur de base (En attente)</option>
-                <option value="parent">Parent</option>
+                <option value="parent">Parent Référent</option>
                 <option value="enseignant">Enseignant / Professeur</option>
                 <option value="direction">Direction</option>
+              </select>
+            </div>
+          )}
+
+          {activeTab === 'activites' && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-[#464555] shrink-0">Catégorie :</span>
+              <select
+                value={auditCategoryFilter}
+                onChange={(e) => setAuditCategoryFilter(e.target.value)}
+                className="px-3 py-2 text-xs bg-white text-[#131b2e] rounded-xl border border-[#eaedff] font-semibold outline-none cursor-pointer"
+              >
+                <option value="all">Toutes les catégories</option>
+                <option value="admin">Administration & Rôles</option>
+                <option value="pedagogie">Pédagogie & Affectations</option>
+                <option value="system">Système & Alertes</option>
               </select>
             </div>
           )}
@@ -739,7 +892,7 @@ export const AdminDashboard: React.FC = () => {
                 {filteredStudents.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-8 text-center text-[#777587]">
-                      Aucun élève trouvé. Utilisez le bouton « Créer un Élève » pour en ajouter un.
+                      Aucun élève trouvé. Utilisez le bouton « Créer un Élève » pour en inscrire un.
                     </td>
                   </tr>
                 ) : (
@@ -819,9 +972,9 @@ export const AdminDashboard: React.FC = () => {
                                 level: student.level,
                                 gender: student.gender || 'M',
                                 birthDate: student.birthDate || '2010-04-15',
-                                parentName: student.parentName,
-                                parentEmail: student.parentEmail,
-                                parentPhone: student.parentPhone,
+                                parentName: student.parentName || '',
+                                parentEmail: student.parentEmail || '',
+                                parentPhone: student.parentPhone || '',
                                 generalAverage: student.generalAverage || 14.5,
                                 status: (student.status as any) || 'En règle'
                               });
@@ -834,10 +987,15 @@ export const AdminDashboard: React.FC = () => {
                           </button>
                           <button
                             onClick={() => handleDeleteStudent(student)}
-                            className="p-1.5 rounded-lg bg-[#ffdad6]/50 hover:bg-[#ffdad6] text-[#ba1a1a] cursor-pointer"
+                            disabled={deletingId === student.id}
+                            className="p-1.5 rounded-lg bg-[#ffdad6]/50 hover:bg-[#ffdad6] text-[#ba1a1a] disabled:opacity-50 cursor-pointer flex items-center justify-center"
                             title="Supprimer / Radier élève"
                           >
-                            <span className="material-symbols-outlined text-[18px]">delete</span>
+                            {deletingId === student.id ? (
+                              <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                            ) : (
+                              <span className="material-symbols-outlined text-[18px]">delete</span>
+                            )}
                           </button>
                         </div>
                       </td>
@@ -936,10 +1094,15 @@ export const AdminDashboard: React.FC = () => {
                       </button>
                       <button
                         onClick={() => handleDeleteClass(cls)}
-                        className="p-1.5 rounded-lg bg-white hover:bg-[#ffdad6] text-[#ba1a1a] border border-[#eaedff] cursor-pointer"
+                        disabled={deletingId === cls.id}
+                        className="p-1.5 rounded-lg bg-white hover:bg-[#ffdad6] text-[#ba1a1a] border border-[#eaedff] disabled:opacity-50 cursor-pointer flex items-center justify-center"
                         title="Supprimer classe"
                       >
-                        <span className="material-symbols-outlined text-[16px]">delete</span>
+                        {deletingId === cls.id ? (
+                          <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                        ) : (
+                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                        )}
                       </button>
                     </div>
                   </div>
@@ -968,7 +1131,7 @@ export const AdminDashboard: React.FC = () => {
                 {filteredTeachers.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-8 text-center text-[#777587]">
-                      Aucun professeur enregistré. Vous pouvez déclarer un compte inscrit comme Enseignant dans l'onglet « Comptes Inscrits ».
+                      Aucun professeur enregistré. Cliquez sur « Ajouter un Enseignant » ou validez un compte inscrit dans l'onglet « Comptes Inscrits ».
                     </td>
                   </tr>
                 ) : (
@@ -1046,9 +1209,9 @@ export const AdminDashboard: React.FC = () => {
             <div className="p-4 rounded-2xl bg-[#eaedff] text-xs text-[#131b2e] flex items-center gap-3">
               <span className="material-symbols-outlined text-[#3525cd] text-[24px]">verified_user</span>
               <div>
-                <span className="font-bold">Règle de sécurité de la Direction :</span>
+                <span className="font-bold">Attribution des accès par la Direction :</span>
                 <p className="text-[#464555] mt-0.5">
-                  Tout nouveau compte créé possède initialement le rôle utilisateur de base. La Direction est la seule entité habilitée à lui attribuer son rôle fonctionnel (Parent, Professeur, Direction) et ses accès aux données scolaires.
+                  Tout utilisateur inscrit sur la plateforme débute avec le rôle de base. Vous pouvez ici examiner chaque compte et lui attribuer son rôle officiel (*Parent*, *Professeur*, *Direction*).
                 </p>
               </div>
             </div>
@@ -1123,51 +1286,61 @@ export const AdminDashboard: React.FC = () => {
         {/* ========================================== */}
         {activeTab === 'associations' && (
           <div className="space-y-6">
-            <div className="p-5 rounded-2xl bg-gradient-to-r from-[#3525cd] to-[#4f46e5] text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
+            <div className="p-5 rounded-3xl bg-gradient-to-r from-[#3525cd] to-[#4f46e5] text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
               <div>
-                <h3 className="text-base font-bold">Liaison Parent ➔ Élève</h3>
+                <h3 className="text-base font-bold">Liaison Certifiée Parent ➔ Élève</h3>
                 <p className="text-xs text-[#dad7ff] mt-0.5">
-                  Un parent ne peut accéder qu'aux élèves qui lui sont explicitement associés par la Direction.
+                  Recherchez un parent par son nom, son adresse email ou son téléphone pour l'associer à un élève.
                 </p>
               </div>
               <button
                 onClick={() => {
-                  setSelectedStudentForParentAssoc(students[0] || null);
+                  setSelectedStudentForParentAssoc(null);
+                  setSelectedParentAccount(null);
+                  setStudentSearchQueryForAssoc('');
+                  setParentSearchQuery('');
                   setShowAssociateParentModal(true);
                 }}
-                className="px-4 py-2 rounded-xl bg-white text-[#3525cd] text-xs font-bold hover:bg-[#faf8ff] transition-all cursor-pointer shrink-0"
+                className="px-4 py-2.5 rounded-xl bg-white text-[#3525cd] text-xs font-bold hover:bg-[#faf8ff] transition-all cursor-pointer shrink-0 shadow-sm flex items-center gap-1.5"
               >
-                + Associer un Parent à un Élève
+                <span className="material-symbols-outlined text-[18px]">person_add</span>
+                <span>Nouvelle Association Parent ➔ Élève</span>
               </button>
             </div>
 
+            {/* List of current Student -> Parent Associations */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {students.map((student) => (
-                <div key={student.id} className="p-4 rounded-2xl bg-[#faf8ff] border border-[#eaedff] flex flex-col justify-between space-y-3">
+                <div key={student.id} className="p-5 rounded-2xl bg-[#faf8ff] border border-[#eaedff] flex flex-col justify-between space-y-4 hover:shadow-md transition-all">
                   <div className="flex items-center gap-3">
                     <img 
-                      src={student.photoUrl} 
+                      src={student.photoUrl || 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80'} 
                       alt={student.firstName} 
-                      className="w-11 h-11 rounded-xl object-cover border border-[#eaedff]"
+                      className="w-12 h-12 rounded-2xl object-cover border border-[#eaedff]"
                     />
                     <div>
                       <h4 className="font-bold text-sm text-[#131b2e]">{student.firstName} {student.lastName}</h4>
-                      <span className="text-xs text-[#3525cd] font-semibold">{student.class} • {student.matricule}</span>
+                      <span className="text-xs text-[#3525cd] font-bold">{student.class} • {student.matricule}</span>
                     </div>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-white border border-[#eaedff] text-xs space-y-1">
-                    <span className="text-[10px] text-[#777587] uppercase font-bold block">Parent Associé</span>
+                  <div className="p-3.5 rounded-xl bg-white border border-[#eaedff] text-xs space-y-1.5">
+                    <span className="text-[10px] text-[#777587] uppercase font-bold block">Parent Associé Officiel</span>
                     {student.parentName ? (
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-bold text-[#131b2e]">{student.parentName}</div>
-                          <div className="text-[11px] text-[#777587]">{student.parentEmail || student.parentPhone}</div>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-[#131b2e] flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[#006e4b] text-[16px]">verified</span>
+                            <span>{student.parentName}</span>
+                          </span>
                         </div>
-                        <span className="material-symbols-outlined text-[#006e4b] text-[20px]">check_circle</span>
+                        <div className="text-[11px] text-[#777587]">{student.parentEmail || 'Email non renseigné'}</div>
+                        {student.parentPhone && (
+                          <div className="text-[11px] text-[#464555] font-semibold">{student.parentPhone}</div>
+                        )}
                       </div>
                     ) : (
-                      <div className="flex items-center justify-between text-[#ba1a1a]">
+                      <div className="flex items-center justify-between text-[#ba1a1a] py-1">
                         <span className="text-xs font-semibold">Aucun parent rattaché</span>
                         <span className="material-symbols-outlined text-[18px]">warning</span>
                       </div>
@@ -1177,11 +1350,14 @@ export const AdminDashboard: React.FC = () => {
                   <button
                     onClick={() => {
                       setSelectedStudentForParentAssoc(student);
+                      setSelectedParentAccount(null);
+                      setParentSearchQuery('');
                       setShowAssociateParentModal(true);
                     }}
-                    className="w-full py-2 rounded-xl bg-[#f2f3ff] hover:bg-[#eaedff] text-[#3525cd] text-xs font-bold transition-colors cursor-pointer"
+                    className="w-full py-2.5 rounded-xl bg-[#f2f3ff] hover:bg-[#eaedff] text-[#3525cd] text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                   >
-                    {student.parentName ? 'Modifier le parent associé' : 'Associer un compte parent'}
+                    <span className="material-symbols-outlined text-[16px]">sync_alt</span>
+                    <span>{student.parentName ? 'Modifier le parent associé' : 'Associer un compte parent'}</span>
                   </button>
                 </div>
               ))}
@@ -1194,42 +1370,50 @@ export const AdminDashboard: React.FC = () => {
         {/* ========================================== */}
         {activeTab === 'activites' && (
           <div className="space-y-4">
-            <h3 className="text-sm font-bold text-[#131b2e] flex items-center gap-2">
-              <span className="material-symbols-outlined text-[#3525cd]">history</span>
-              <span>Journal Global des Événements & Audit de la Plateforme</span>
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-[#131b2e] flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#3525cd]">history</span>
+                <span>Journal Global des Événements & Audit de la Plateforme ({filteredActivityLogs.length})</span>
+              </h3>
+            </div>
 
             <div className="space-y-3">
-              {activityLogs.map((log) => (
-                <div key={log.id} className="p-4 rounded-2xl bg-[#faf8ff] border border-[#eaedff] flex items-start gap-3 hover:bg-white transition-colors">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                    log.type === 'student_created' ? 'bg-[#6ffbbe] text-[#005236]' :
-                    log.type === 'role_assigned' ? 'bg-[#e2dfff] text-[#3525cd]' :
-                    log.type === 'alert_sent' ? 'bg-[#ffdad6] text-[#ba1a1a]' :
-                    log.type === 'teacher_assigned' ? 'bg-[#ffdad2] text-[#ae3115]' :
-                    'bg-[#dae2fd] text-[#3525cd]'
-                  }`}>
-                    <span className="material-symbols-outlined text-[20px]">
-                      {log.type === 'student_created' ? 'person_add' :
-                       log.type === 'role_assigned' ? 'verified' :
-                       log.type === 'alert_sent' ? 'notification_important' :
-                       log.type === 'teacher_assigned' ? 'school' : 'campaign'}
-                    </span>
-                  </div>
-
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <h4 className="font-bold text-xs text-[#131b2e]">{log.title}</h4>
-                      <span className="text-[10px] text-[#777587] font-medium shrink-0">{log.timestamp}</span>
-                    </div>
-                    <p className="text-xs text-[#464555] mt-0.5">{log.description}</p>
-                    <div className="mt-1 flex items-center gap-2 text-[10px] text-[#777587]">
-                      <span>Par : <strong>{log.actorName}</strong> ({log.actorRole})</span>
-                      {log.targetName && <span>• Cible : <strong>{log.targetName}</strong></span>}
-                    </div>
-                  </div>
+              {filteredActivityLogs.length === 0 ? (
+                <div className="p-8 text-center text-[#777587] bg-[#faf8ff] rounded-2xl border border-[#eaedff]">
+                  Aucun événement d'audit ne correspond aux filtres sélectionnés.
                 </div>
-              ))}
+              ) : (
+                filteredActivityLogs.map((log) => (
+                  <div key={log.id} className="p-4 rounded-2xl bg-[#faf8ff] border border-[#eaedff] flex items-start gap-3.5 hover:bg-white transition-colors shadow-2xs">
+                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                      log.type === 'student_created' ? 'bg-[#6ffbbe] text-[#005236]' :
+                      log.type === 'role_assigned' ? 'bg-[#e2dfff] text-[#3525cd]' :
+                      log.type === 'alert_sent' ? 'bg-[#ffdad6] text-[#ba1a1a]' :
+                      log.type === 'teacher_assigned' ? 'bg-[#ffdad2] text-[#ae3115]' :
+                      'bg-[#dae2fd] text-[#3525cd]'
+                    }`}>
+                      <span className="material-symbols-outlined text-[20px]">
+                        {log.type === 'student_created' ? 'person_add' :
+                         log.type === 'role_assigned' ? 'verified' :
+                         log.type === 'alert_sent' ? 'notification_important' :
+                         log.type === 'teacher_assigned' ? 'school' : 'campaign'}
+                      </span>
+                    </div>
+
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="font-bold text-xs text-[#131b2e]">{log.title}</h4>
+                        <span className="text-[10px] text-[#777587] font-medium shrink-0">{log.timestamp}</span>
+                      </div>
+                      <p className="text-xs text-[#464555] mt-0.5">{log.description}</p>
+                      <div className="mt-1 flex items-center gap-2 text-[10px] text-[#777587]">
+                        <span>Par : <strong>{log.actorName}</strong> ({log.actorRole})</span>
+                        {log.targetName && <span>• Cible : <strong>{log.targetName}</strong></span>}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
@@ -1264,7 +1448,7 @@ export const AdminDashboard: React.FC = () => {
                   <input
                     type="text"
                     required
-                    placeholder="Ex: Kouamé"
+                    placeholder="Ex: Awa"
                     value={studentForm.firstName}
                     onChange={(e) => setStudentForm({ ...studentForm, firstName: e.target.value })}
                     className="w-full px-3 py-2 text-xs rounded-xl bg-[#f2f3ff] border border-[#eaedff] focus:bg-white focus:ring-2 focus:ring-[#3525cd] outline-none"
@@ -1275,7 +1459,7 @@ export const AdminDashboard: React.FC = () => {
                   <input
                     type="text"
                     required
-                    placeholder="Ex: Aminata"
+                    placeholder="Ex: Kouamé"
                     value={studentForm.lastName}
                     onChange={(e) => setStudentForm({ ...studentForm, lastName: e.target.value })}
                     className="w-full px-3 py-2 text-xs rounded-xl bg-[#f2f3ff] border border-[#eaedff] focus:bg-white focus:ring-2 focus:ring-[#3525cd] outline-none"
@@ -1398,9 +1582,11 @@ export const AdminDashboard: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-[#3525cd] to-[#fd6a49] text-white shadow-md hover:opacity-95 cursor-pointer"
+                  disabled={isSavingStudent}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-[#3525cd] to-[#fd6a49] text-white shadow-md hover:opacity-95 disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
                 >
-                  Enregistrer l'élève dans la base
+                  {isSavingStudent && <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>}
+                  <span>Enregistrer l'élève dans Firestore</span>
                 </button>
               </div>
             </form>
@@ -1449,7 +1635,7 @@ export const AdminDashboard: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-[#131b2e] mb-1">Classe</label>
+                  <label className="block text-xs font-bold text-[#131b2e] mb-1">Classe attribuée</label>
                   <select
                     value={studentForm.class}
                     onChange={(e) => setStudentForm({ ...studentForm, class: e.target.value })}
@@ -1504,9 +1690,11 @@ export const AdminDashboard: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#3525cd] text-white shadow-md hover:bg-[#4f46e5] cursor-pointer"
+                  disabled={isSavingStudent}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#3525cd] text-white shadow-md hover:bg-[#4f46e5] disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
                 >
-                  Enregistrer les modifications
+                  {isSavingStudent && <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>}
+                  <span>Enregistrer les modifications</span>
                 </button>
               </div>
             </form>
@@ -1647,9 +1835,208 @@ export const AdminDashboard: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#3525cd] text-white shadow-md hover:bg-[#4f46e5] cursor-pointer"
+                  disabled={isSavingClass}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#3525cd] text-white shadow-md hover:bg-[#4f46e5] disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
                 >
-                  Créer la classe
+                  {isSavingClass && <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>}
+                  <span>Créer la classe</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* MODAL: MODIFIER UNE CLASSE                 */}
+      {/* ========================================== */}
+      {showEditClassModal && selectedClassForEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#283044]/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#eaedff] animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-[#eaedff] mb-4">
+              <h3 className="text-base font-bold text-[#131b2e]">Modifier classe : {selectedClassForEdit.name}</h3>
+              <button onClick={() => setShowEditClassModal(false)} className="text-[#777587] hover:text-[#131b2e] cursor-pointer">
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateClass} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-[#131b2e] mb-1">Nom de la classe</label>
+                <input
+                  type="text"
+                  required
+                  value={classForm.name}
+                  onChange={(e) => setClassForm({ ...classForm, name: e.target.value })}
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-[#f2f3ff] border border-[#eaedff] focus:bg-white outline-none font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#131b2e] mb-1">Niveau</label>
+                <input
+                  type="text"
+                  value={classForm.level}
+                  onChange={(e) => setClassForm({ ...classForm, level: e.target.value })}
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-[#f2f3ff] border border-[#eaedff] focus:bg-white outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-[#131b2e] mb-1">Salle</label>
+                  <input
+                    type="text"
+                    value={classForm.room}
+                    onChange={(e) => setClassForm({ ...classForm, room: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl bg-[#f2f3ff] border border-[#eaedff] focus:bg-white outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#131b2e] mb-1">Professeur Principal</label>
+                  <input
+                    type="text"
+                    value={classForm.mainTeacherName}
+                    onChange={(e) => setClassForm({ ...classForm, mainTeacherName: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl bg-[#f2f3ff] border border-[#eaedff] focus:bg-white outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#eaedff]">
+                <button
+                  type="button"
+                  onClick={() => setShowEditClassModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-[#464555] hover:bg-[#f2f3ff] cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingClass}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#3525cd] text-white shadow-md hover:bg-[#4f46e5] disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                >
+                  {isSavingClass && <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>}
+                  <span>Enregistrer modifications</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* MODAL: AJOUTER UN ENSEIGNANT               */}
+      {/* ========================================== */}
+      {showCreateTeacherModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#283044]/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-[#eaedff] animate-in zoom-in-95 duration-200 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-[#eaedff]">
+              <div>
+                <h3 className="text-base font-bold text-[#131b2e]">Ajouter un nouveau Professeur</h3>
+                <p className="text-xs text-[#777587]">Déclaration officielle dans le corps enseignant</p>
+              </div>
+              <button onClick={() => setShowCreateTeacherModal(false)} className="text-[#777587] hover:text-[#131b2e] cursor-pointer">
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateTeacher} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-[#131b2e] mb-1">Prénom *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: Aya"
+                    value={teacherCreateForm.firstName}
+                    onChange={(e) => setTeacherCreateForm({ ...teacherCreateForm, firstName: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl bg-[#f2f3ff] border border-[#eaedff] outline-none focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#131b2e] mb-1">Nom de famille *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: Touré"
+                    value={teacherCreateForm.lastName}
+                    onChange={(e) => setTeacherCreateForm({ ...teacherCreateForm, lastName: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl bg-[#f2f3ff] border border-[#eaedff] outline-none focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-[#131b2e] mb-1">Email académique *</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="professeur@eduliaison.ci"
+                    value={teacherCreateForm.email}
+                    onChange={(e) => setTeacherCreateForm({ ...teacherCreateForm, email: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl bg-[#f2f3ff] border border-[#eaedff] outline-none focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#131b2e] mb-1">Téléphone / WhatsApp</label>
+                  <input
+                    type="tel"
+                    placeholder="+225 07 00 00 00 00"
+                    value={teacherCreateForm.phone}
+                    onChange={(e) => setTeacherCreateForm({ ...teacherCreateForm, phone: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl bg-[#f2f3ff] border border-[#eaedff] outline-none focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#131b2e] mb-2">Classes assignées</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {classes.map(cls => {
+                    const isChecked = teacherCreateForm.assignedClasses.includes(cls.name);
+                    return (
+                      <label 
+                        key={cls.id}
+                        className={`p-2 rounded-xl border flex items-center gap-2 cursor-pointer text-xs font-bold transition-colors ${
+                          isChecked ? 'bg-[#e2dfff] border-[#3525cd] text-[#3525cd]' : 'bg-[#faf8ff] border-[#eaedff] text-[#464555]'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setTeacherCreateForm({ ...teacherCreateForm, assignedClasses: [...teacherCreateForm.assignedClasses, cls.name] });
+                            } else {
+                              setTeacherCreateForm({ ...teacherCreateForm, assignedClasses: teacherCreateForm.assignedClasses.filter(c => c !== cls.name) });
+                            }
+                          }}
+                          className="rounded text-[#3525cd]"
+                        />
+                        <span>{cls.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#eaedff]">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateTeacherModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-[#464555] hover:bg-[#f2f3ff] cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingTeacher}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#3525cd] text-white shadow-md hover:bg-[#4f46e5] disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                >
+                  {isSavingTeacher && <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>}
+                  <span>Créer et enregistrer</span>
                 </button>
               </div>
             </form>
@@ -1753,9 +2140,11 @@ export const AdminDashboard: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#3525cd] text-white shadow-md hover:bg-[#4f46e5] cursor-pointer"
+                  disabled={isSavingRole}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#3525cd] text-white shadow-md hover:bg-[#4f46e5] disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
                 >
-                  Valider et appliquer le rôle
+                  {isSavingRole && <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>}
+                  <span>Valider et appliquer le rôle</span>
                 </button>
               </div>
             </form>
@@ -1818,7 +2207,7 @@ export const AdminDashboard: React.FC = () => {
                   Matières attribuées :
                 </label>
                 <div className="grid grid-cols-2 gap-2">
-                  {['Français', 'Mathématiques', 'Anglais', 'Histoire-Géographie', 'SVT', 'Physique-Chimie', 'Philosophie', 'Arts Plastiques'].map(subject => {
+                  {['Français', 'Littérature Africaine', 'Mathématiques', 'Anglais', 'Histoire-Géographie', 'SVT', 'Physique-Chimie', 'Philosophie', 'Arts Plastiques'].map(subject => {
                     const isChecked = selectedTeacherSubjects.includes(subject);
                     return (
                       <label 
@@ -1856,9 +2245,11 @@ export const AdminDashboard: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#3525cd] text-white shadow-md hover:bg-[#4f46e5] cursor-pointer"
+                  disabled={isSavingTeacherAssignments}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#3525cd] text-white shadow-md hover:bg-[#4f46e5] disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
                 >
-                  Enregistrer les affectations
+                  {isSavingTeacherAssignments && <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>}
+                  <span>Enregistrer les affectations</span>
                 </button>
               </div>
             </form>
@@ -1869,57 +2260,241 @@ export const AdminDashboard: React.FC = () => {
       {/* ========================================== */}
       {/* MODAL: ASSOCIER PARENT ➔ ÉLÈVE             */}
       {/* ========================================== */}
-      {showAssociateParentModal && selectedStudentForParentAssoc && (
+      {showAssociateParentModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#283044]/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#eaedff] animate-in zoom-in-95 duration-200 space-y-4">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-[#eaedff] animate-in zoom-in-95 duration-200 space-y-5 max-h-[90vh] overflow-y-auto">
+            
+            {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 border-b border-[#eaedff]">
-              <div>
-                <h3 className="text-base font-bold text-[#131b2e]">Association Parent ➔ Élève</h3>
-                <p className="text-xs text-[#3525cd] font-bold">
-                  Élève : {selectedStudentForParentAssoc.firstName} {selectedStudentForParentAssoc.lastName} ({selectedStudentForParentAssoc.class})
-                </p>
+              <div className="flex items-center gap-2.5">
+                <span className="w-10 h-10 rounded-xl bg-[#e2dfff] text-[#3525cd] flex items-center justify-center font-bold">
+                  <span className="material-symbols-outlined text-[22px]">hub</span>
+                </span>
+                <div>
+                  <h3 className="text-base font-bold text-[#131b2e]">Nouvelle Association Parent ➔ Élève</h3>
+                  <p className="text-xs text-[#777587]">1. Choisissez l'élève, puis 2. Choisissez le parent</p>
+                </div>
               </div>
-              <button onClick={() => setShowAssociateParentModal(false)} className="text-[#777587] hover:text-[#131b2e] cursor-pointer">
+              <button 
+                onClick={() => {
+                  setShowAssociateParentModal(false);
+                  setSelectedStudentForParentAssoc(null);
+                  setSelectedParentAccount(null);
+                }} 
+                className="text-[#777587] hover:text-[#131b2e] cursor-pointer"
+              >
                 <span className="material-symbols-outlined text-[20px]">close</span>
               </button>
             </div>
 
-            <form onSubmit={handleAssociateParentToStudent} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-[#131b2e] mb-1">Sélectionner le compte parent inscrit</label>
-                <select
-                  required
-                  value={selectedParentIdForAssoc}
-                  onChange={(e) => setSelectedParentIdForAssoc(e.target.value)}
-                  className="w-full px-3 py-2.5 text-xs rounded-xl bg-[#f2f3ff] border border-[#eaedff] outline-none font-bold"
-                >
-                  <option value="">-- Choisir un compte parent --</option>
-                  {parentsList.map(p => (
-                    <option key={p.uid} value={p.uid}>
-                      {p.name} ({p.email}) - {p.phone || 'Sans tel'}
-                    </option>
-                  ))}
-                </select>
+            <form onSubmit={handleAssociateParentToStudent} className="space-y-5">
+              
+              {/* ÉTAPE 1 : CHOISIR L'ÉLÈVE */}
+              <div className="space-y-2.5 p-4 rounded-2xl bg-[#faf8ff] border border-[#eaedff]">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#3525cd] uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-[#3525cd] text-white text-[10px] flex items-center justify-center font-bold">1</span>
+                    <span>Élève à associer</span>
+                  </span>
+                  {selectedStudentForParentAssoc && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStudentForParentAssoc(null)}
+                      className="text-[11px] text-[#3525cd] hover:underline font-bold cursor-pointer"
+                    >
+                      Changer d'élève
+                    </button>
+                  )}
+                </div>
+
+                {selectedStudentForParentAssoc ? (
+                  <div className="p-3 rounded-2xl bg-white border-2 border-[#3525cd] flex items-center justify-between shadow-xs">
+                    <div className="flex items-center gap-3">
+                      <img 
+                        src={selectedStudentForParentAssoc.photoUrl || 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80'} 
+                        alt={selectedStudentForParentAssoc.firstName} 
+                        className="w-11 h-11 rounded-xl object-cover border border-[#eaedff]"
+                      />
+                      <div>
+                        <div className="font-bold text-xs text-[#131b2e]">
+                          {selectedStudentForParentAssoc.firstName} {selectedStudentForParentAssoc.lastName}
+                        </div>
+                        <div className="text-[10px] text-[#3525cd] font-bold">
+                          Classe : {selectedStudentForParentAssoc.class} • Matricule : {selectedStudentForParentAssoc.matricule}
+                        </div>
+                        {selectedStudentForParentAssoc.parentName && (
+                          <div className="text-[10px] text-[#777587]">
+                            Tuteur actuel : {selectedStudentForParentAssoc.parentName}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <span className="material-symbols-outlined text-[#006e4b] text-[22px]">check_circle</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <span className="material-symbols-outlined absolute left-3 top-2.5 text-[#777587] text-[18px]">search</span>
+                      <input
+                        type="text"
+                        placeholder="Rechercher par nom, prénom, matricule ou classe..."
+                        value={studentSearchQueryForAssoc}
+                        onChange={(e) => setStudentSearchQueryForAssoc(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-white border border-[#eaedff] focus:ring-2 focus:ring-[#3525cd] outline-none"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                      {filteredStudentsForAssoc.length === 0 ? (
+                        <div className="p-3 text-center text-xs text-[#777587] bg-white rounded-xl border border-[#eaedff]">
+                          Aucun élève trouvé.
+                        </div>
+                      ) : (
+                        filteredStudentsForAssoc.map((st) => (
+                          <div
+                            key={st.id}
+                            onClick={() => setSelectedStudentForParentAssoc(st)}
+                            className="p-2.5 rounded-xl bg-white border border-[#eaedff] hover:border-[#3525cd] hover:bg-[#e2dfff]/20 cursor-pointer transition-all flex items-center justify-between"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <img 
+                                src={st.photoUrl || 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80'} 
+                                alt={st.firstName} 
+                                className="w-8 h-8 rounded-lg object-cover"
+                              />
+                              <div>
+                                <div className="font-bold text-xs text-[#131b2e]">{st.firstName} {st.lastName}</div>
+                                <div className="text-[10px] text-[#777587] font-semibold">{st.class} • {st.matricule}</div>
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-bold text-[#3525cd] px-2 py-0.5 rounded-md bg-[#f2f3ff] border border-[#eaedff]">
+                              Sélectionner
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="p-3 rounded-xl bg-[#6ffbbe]/20 text-[#005236] text-[11px] leading-relaxed">
-                ✓ Une fois l'association validée par la Direction, ce parent aura accès en temps réel au carnet de liaison, bulletins et présences de cet élève.
+              {/* ÉTAPE 2 : CHOISIR LE PARENT */}
+              <div className="space-y-2.5 p-4 rounded-2xl bg-[#faf8ff] border border-[#eaedff]">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#3525cd] uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-[#3525cd] text-white text-[10px] flex items-center justify-center font-bold">2</span>
+                    <span>Parent Référent à associer</span>
+                  </span>
+                  {selectedParentAccount && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedParentAccount(null)}
+                      className="text-[11px] text-[#3525cd] hover:underline font-bold cursor-pointer"
+                    >
+                      Changer de parent
+                    </button>
+                  )}
+                </div>
+
+                {selectedParentAccount ? (
+                  <div className="p-3 rounded-2xl bg-white border-2 border-[#3525cd] flex items-center justify-between shadow-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-xl bg-[#3525cd] text-white flex items-center justify-center font-bold text-sm">
+                        {selectedParentAccount.name?.[0] || selectedParentAccount.email[0].toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="font-bold text-xs text-[#131b2e]">
+                          {selectedParentAccount.name || selectedParentAccount.email}
+                        </div>
+                        <div className="text-[10px] text-[#777587]">
+                          {selectedParentAccount.email} {selectedParentAccount.phone ? `• ${selectedParentAccount.phone}` : ''}
+                        </div>
+                        <span className="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#6ffbbe]/30 text-[#005236] mt-0.5">
+                          Compte certifié
+                        </span>
+                      </div>
+                    </div>
+                    <span className="material-symbols-outlined text-[#006e4b] text-[22px]">check_circle</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <span className="material-symbols-outlined absolute left-3 top-2.5 text-[#777587] text-[18px]">search</span>
+                      <input
+                        type="text"
+                        placeholder="Rechercher par nom, email ou numéro de téléphone..."
+                        value={parentSearchQuery}
+                        onChange={(e) => setParentSearchQuery(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-white border border-[#eaedff] focus:ring-2 focus:ring-[#3525cd] outline-none"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                      {filteredParentSearchResults.length === 0 ? (
+                        <div className="p-3 text-center text-xs text-[#777587] bg-white rounded-xl border border-[#eaedff]">
+                          Aucun parent correspondant trouvé.
+                        </div>
+                      ) : (
+                        filteredParentSearchResults.map((parent) => (
+                          <div
+                            key={parent.uid}
+                            onClick={() => setSelectedParentAccount(parent)}
+                            className="p-2.5 rounded-xl bg-white border border-[#eaedff] hover:border-[#3525cd] hover:bg-[#e2dfff]/20 cursor-pointer transition-all flex items-center justify-between"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-lg bg-[#eaedff] text-[#3525cd] flex items-center justify-center font-bold text-xs">
+                                {parent.name?.[0] || parent.email[0].toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="font-bold text-xs text-[#131b2e]">{parent.name || parent.email}</div>
+                                <div className="text-[10px] text-[#777587]">{parent.email} {parent.phone ? `• ${parent.phone}` : ''}</div>
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-bold text-[#3525cd] px-2 py-0.5 rounded-md bg-[#f2f3ff] border border-[#eaedff]">
+                              Choisir
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
+              {/* RÉCAPITULATIF SI LES DEUX SONT SÉLECTIONNÉS */}
+              {selectedStudentForParentAssoc && selectedParentAccount && (
+                <div className="p-3.5 rounded-2xl bg-[#6ffbbe]/20 border border-[#6ffbbe] text-[#005236] text-xs flex items-center gap-2.5 animate-in fade-in duration-200">
+                  <span className="material-symbols-outlined text-[20px] shrink-0">verified</span>
+                  <div className="leading-snug">
+                    Liaison officielle : <strong>{selectedStudentForParentAssoc.firstName} {selectedStudentForParentAssoc.lastName}</strong> ({selectedStudentForParentAssoc.class}) ➔ Parent <strong>{selectedParentAccount.name || selectedParentAccount.email}</strong>.
+                  </div>
+                </div>
+              )}
+
+              {/* Boutons d'action */}
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#eaedff]">
                 <button
                   type="button"
-                  onClick={() => setShowAssociateParentModal(false)}
+                  onClick={() => {
+                    setShowAssociateParentModal(false);
+                    setSelectedStudentForParentAssoc(null);
+                    setSelectedParentAccount(null);
+                  }}
                   className="px-4 py-2 rounded-xl text-xs font-bold text-[#464555] hover:bg-[#f2f3ff] cursor-pointer"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
-                  disabled={!selectedParentIdForAssoc}
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#3525cd] text-white shadow-md hover:bg-[#4f46e5] disabled:opacity-50 cursor-pointer"
+                  disabled={!selectedStudentForParentAssoc || !selectedParentAccount || isSavingAssoc}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#3525cd] text-white shadow-md hover:bg-[#4f46e5] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5"
                 >
-                  Valider l'association
+                  {isSavingAssoc ? (
+                    <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                  ) : (
+                    <span className="material-symbols-outlined text-[16px]">link</span>
+                  )}
+                  <span>Valider l'association</span>
                 </button>
               </div>
             </form>
@@ -1972,9 +2547,11 @@ export const AdminDashboard: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm cursor-pointer"
+                  disabled={isBroadcasting}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
                 >
-                  Diffuser l'alerte immédiate
+                  {isBroadcasting && <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>}
+                  <span>Diffuser l'alerte immédiate</span>
                 </button>
               </div>
             </form>
@@ -2047,9 +2624,11 @@ export const AdminDashboard: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#3525cd] hover:bg-[#4f46e5] text-white shadow-md cursor-pointer"
+                  disabled={isBroadcasting}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#3525cd] hover:bg-[#4f46e5] text-white shadow-md disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
                 >
-                  Publier et notifier
+                  {isBroadcasting && <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>}
+                  <span>Publier et notifier</span>
                 </button>
               </div>
             </form>

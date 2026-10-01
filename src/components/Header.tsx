@@ -165,6 +165,13 @@ export const Header: React.FC<HeaderProps> = ({
               subtitle: 'Observations de conduite et suivi des signatures',
               icon: 'edit_note',
               badge: 'À jour'
+            },
+            {
+              id: 'teacher-messaging',
+              label: 'Messagerie Parents',
+              subtitle: 'Répondre aux messages et questions des familles',
+              icon: 'forum',
+              badge: 'Direct'
             }
           ]
         }

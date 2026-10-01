@@ -18,16 +18,20 @@ export const ParentAttendance: React.FC<ParentAttendanceProps> = ({
   const [incidentReason, setIncidentReason] = useState('transport');
   const [incidentComment, setIncidentComment] = useState('');
   const [fileName, setFileName] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [downloadingAttestation, setDownloadingAttestation] = useState(false);
   const [attestationDownloaded, setAttestationDownloaded] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setFormSubmitted(true);
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     setTimeout(() => {
+      setIsSubmitting(false);
+      setFormSubmitted(true);
       setIncidentComment('');
       setFileName('');
-    }, 500);
+    }, 600);
   };
 
   const handleDownloadAttestation = () => {
@@ -316,10 +320,15 @@ export const ParentAttendance: React.FC<ParentAttendanceProps> = ({
                     Conforme au protocole scolaire EduLiaison • Signature électronique parentale
                   </span>
                   <button 
-                    className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#3525cd] hover:bg-[#4f46e5] text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer" 
+                    disabled={isSubmitting}
+                    className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#3525cd] hover:bg-[#4f46e5] disabled:opacity-60 text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer" 
                     type="submit"
                   >
-                    <span className="material-symbols-outlined text-[20px]">send</span>
+                    {isSubmitting ? (
+                      <span className="material-symbols-outlined text-[20px] animate-spin">progress_activity</span>
+                    ) : (
+                      <span className="material-symbols-outlined text-[20px]">send</span>
+                    )}
                     <span>Transmettre à la Vie Scolaire</span>
                   </button>
                 </div>

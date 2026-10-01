@@ -89,6 +89,7 @@ export const TeacherLiaisonBook: React.FC = () => {
     content: '',
     requiresSignature: true
   });
+  const [isSaving, setIsSaving] = useState(false);
   const [sendSuccess, setSendSuccess] = useState(false);
 
   const filteredEntries = entries.filter(item => {
@@ -100,34 +101,38 @@ export const TeacherLiaisonBook: React.FC = () => {
 
   const handleCreateEntry = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEntry.title.trim() || !newEntry.content.trim()) return;
+    if (!newEntry.title.trim() || !newEntry.content.trim() || isSaving) return;
 
-    const entry: LiaisonEntry = {
-      id: `l-${Date.now()}`,
-      studentName: newEntry.studentName,
-      className: newEntry.className,
-      category: newEntry.category,
-      title: newEntry.title,
-      content: newEntry.content,
-      author: 'Mme Aya Touré (Professeur Principal)',
-      date: 'À l’instant',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      signedByParent: false,
-      requiresSignature: newEntry.requiresSignature
-    };
+    setIsSaving(true);
+    setTimeout(() => {
+      const entry: LiaisonEntry = {
+        id: `l-${Date.now()}`,
+        studentName: newEntry.studentName,
+        className: newEntry.className,
+        category: newEntry.category,
+        title: newEntry.title,
+        content: newEntry.content,
+        author: 'Mme Aya Touré (Professeur Principal)',
+        date: 'À l’instant',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        signedByParent: false,
+        requiresSignature: newEntry.requiresSignature
+      };
 
-    setEntries([entry, ...entries]);
-    setShowNewModal(false);
-    setNewEntry({
-      studentName: 'Awa Kouamé',
-      className: '3ème A',
-      category: 'conduite',
-      title: '',
-      content: '',
-      requiresSignature: true
-    });
-    setSendSuccess(true);
-    setTimeout(() => setSendSuccess(false), 4000);
+      setEntries([entry, ...entries]);
+      setIsSaving(false);
+      setShowNewModal(false);
+      setNewEntry({
+        studentName: 'Awa Kouamé',
+        className: '3ème A',
+        category: 'conduite',
+        title: '',
+        content: '',
+        requiresSignature: true
+      });
+      setSendSuccess(true);
+      setTimeout(() => setSendSuccess(false), 4000);
+    }, 600);
   };
 
   const getCategoryBadge = (cat: LiaisonEntry['category']) => {
@@ -459,9 +464,11 @@ export const TeacherLiaisonBook: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm cursor-pointer"
+                  disabled={isSaving}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
                 >
-                  Transmettre aux parents
+                  {isSaving && <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>}
+                  <span>Transmettre aux parents</span>
                 </button>
               </div>
             </form>
