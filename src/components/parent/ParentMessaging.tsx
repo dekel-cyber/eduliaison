@@ -3,8 +3,11 @@ import { Student, UserAccount, MessageThread } from '../../types';
 import { 
   subscribeToUsers, 
   subscribeToMessageThreads, 
-  sendMessageToThreadInFirestore 
+  sendMessageToThreadInFirestore,
+  findMatchingThread,
+  getCanonicalThreadId
 } from '../../firebase/firestoreService';
+import { auth } from '../../firebase/config';
 
 interface ParentMessagingProps {
   activeStudent: Student;
@@ -42,10 +45,11 @@ export const ParentMessaging: React.FC<ParentMessagingProps> = ({
     };
   }, []);
 
-  // Filter teachers strictly to those assigned to activeStudent.class + Direction
+  // Filter teachers strictly to those assigned to activeStudent.class + Direction + teachers with active conversations
   const eligibleTeachers = users.filter(u => 
     u.role === 'enseignant' && 
-    (u.assignedClasses?.includes(activeStudent.class) || !u.assignedClasses || u.assignedClasses.length === 0)
+    (u.assignedClasses?.includes(activeStudent.class) || !u.assignedClasses || u.assignedClasses.length === 0 ||
+     threads.some(t => t.teacherId === u.email || t.teacherId === u.uid || t.id.includes(u.uid) || t.id.includes(u.email || '')))
   );
 
   const directionContacts = users.filter(u => u.role === 'direction');
@@ -89,9 +93,27 @@ export const ParentMessaging: React.FC<ParentMessagingProps> = ({
 
   const activeContact = availableContacts.find(c => c.id === activeContactId) || availableContacts[0];
 
-  // Get or initialize thread for activeContact
-  const currentThread = threads.find(t => t.id === `thread_${activeContact?.id}_${activeStudent.id}` || t.id === `thread_${activeContact?.id}`) || {
-    id: `thread_${activeContact?.id}_${activeStudent.id}`,
+  // Get or initialize matching thread for activeContact
+  const parentProfile = {
+    uid: auth.currentUser?.uid || activeStudent.parentId,
+    email: auth.currentUser?.email || activeStudent.parentEmail,
+    name: userName || activeStudent.parentName
+  };
+
+  const matchingFirestoreThread = findMatchingThread(
+    threads,
+    parentProfile,
+    { uid: activeContact?.id, email: activeContact?.email, name: activeContact?.name },
+    activeStudent.id
+  );
+
+  const defaultCanonicalId = getCanonicalThreadId(
+    auth.currentUser?.uid || activeStudent.parentId || 'parent',
+    activeContact?.email || activeContact?.id || 'teacher'
+  );
+
+  const currentThread = matchingFirestoreThread || {
+    id: defaultCanonicalId,
     contactName: activeContact?.name || 'Interlocuteur',
     contactRole: activeContact?.role || 'Équipe pédagogique',
     lastMessageTime: 'Récemment',
@@ -126,11 +148,13 @@ export const ParentMessaging: React.FC<ParentMessagingProps> = ({
       id: `msg_${Date.now()}`,
       sender: 'parent',
       senderName: parentSenderName,
+      senderId: auth.currentUser?.uid || activeStudent.parentId || 'parent',
+      recipientId: activeContact.id,
+      recipientName: activeContact.name,
+      recipientRole: activeContact.role,
       time: timeStr,
       date: 'Aujourd\'hui',
       text: content.trim(),
-      recipientName: activeContact.name,
-      recipientRole: activeContact.role,
       studentContext: `${activeStudent.firstName} ${activeStudent.lastName} (${activeStudent.class})`
     };
 
@@ -138,7 +162,21 @@ export const ParentMessaging: React.FC<ParentMessagingProps> = ({
     setIsSending(true);
 
     try {
-      await sendMessageToThreadInFirestore(currentThread.id, newMsg);
+      await sendMessageToThreadInFirestore(currentThread.id, newMsg, {
+        parentId: auth.currentUser?.uid || activeStudent.parentId,
+        parentEmail: auth.currentUser?.email || activeStudent.parentEmail,
+        parentName: parentSenderName,
+        teacherId: activeContact.id,
+        teacherEmail: activeContact.email,
+        teacherName: activeContact.name,
+        studentId: activeStudent.id,
+        studentName: `${activeStudent.firstName} ${activeStudent.lastName}`,
+        studentClass: activeStudent.class,
+        contactName: activeContact.name,
+        contactRole: activeContact.role,
+        studentContext: `${activeStudent.firstName} ${activeStudent.lastName} (${activeStudent.class})`,
+        lastMessageTime: timeStr
+      });
     } catch (e) {
       console.warn('Could not persist message to Firestore:', e);
     } finally {

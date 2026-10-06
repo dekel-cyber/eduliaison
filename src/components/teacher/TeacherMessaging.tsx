@@ -4,12 +4,15 @@ import {
   subscribeToStudents,
   subscribeToUsers, 
   subscribeToMessageThreads, 
-  sendMessageToThreadInFirestore 
+  sendMessageToThreadInFirestore,
+  getCanonicalThreadId,
+  findMatchingThread
 } from '../../firebase/firestoreService';
 
 interface TeacherMessagingProps {
   onNavigateTab: (tab: string) => void;
   userName?: string;
+  targetParentId?: string;
   currentTeacher?: {
     name?: string;
     email?: string;
@@ -21,6 +24,7 @@ interface TeacherMessagingProps {
 export const TeacherMessaging: React.FC<TeacherMessagingProps> = ({
   onNavigateTab,
   userName,
+  targetParentId,
   currentTeacher
 }) => {
   const [students, setStudents] = useState<Student[]>([]);
@@ -35,6 +39,7 @@ export const TeacherMessaging: React.FC<TeacherMessagingProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const teacherDisplayName = userName || currentTeacher?.name || 'Professeur';
+  const teacherEmail = currentTeacher?.email;
   const teacherClasses = currentTeacher?.assignedClasses && currentTeacher.assignedClasses.length > 0
     ? currentTeacher.assignedClasses
     : ['3ème A', '3ème B'];
@@ -54,38 +59,44 @@ export const TeacherMessaging: React.FC<TeacherMessagingProps> = ({
   // Filter students belonging to teacher's classes
   const assignedStudents = students.filter(s => teacherClasses.includes(s.class));
 
-  // Eligible parents from teacher's classes
-  const eligibleParents = users.filter(u => 
+  // Parents list: prioritize assigned class parents, followed by all other parents in the establishment
+  const classParents = users.filter(u => 
     u.role === 'parent' && 
     (u.childrenIds?.some(cid => assignedStudents.some(as => as.id === cid)) ||
      assignedStudents.some(as => as.parentEmail?.toLowerCase() === u.email?.toLowerCase()))
   );
+  const otherParents = users.filter(u => 
+    u.role === 'parent' && 
+    !classParents.some(cp => cp.uid === u.uid)
+  );
+  const eligibleParents = [...classParents, ...otherParents];
 
   // Build unified conversation list:
-  // Combines existing Firestore threads + potential parent contacts of assigned classes
+  // Combines parents + any orphan threads in Firestore belonging to this teacher
   const conversationList = eligibleParents.map(parent => {
     // Find child associated to this parent
-    const child = assignedStudents.find(s => 
+    const child = students.find(s => 
+      s.parentId === parent.uid ||
       (parent.childrenIds && parent.childrenIds.includes(s.id)) || 
-      (s.parentEmail && s.parentEmail.toLowerCase() === parent.email?.toLowerCase())
+      (s.parentEmail && s.parentEmail.toLowerCase().trim() === parent.email?.toLowerCase().trim())
     ) || assignedStudents[0];
 
-    const threadId = `thread_${parent.uid}_teacher`;
-    const firestoreThread = threads.find(t => 
-      t.id === threadId || 
-      t.id === `thread_${parent.uid}` || 
-      t.id.includes(parent.uid) ||
-      (child && t.id.includes(child.id))
-    );
+    const teacherIdentifier = teacherEmail || teacherDisplayName || 'teacher';
+    const firestoreThread = findMatchingThread(threads, parent, currentTeacher, child?.id);
+    const defaultThreadId = getCanonicalThreadId(parent.uid, teacherIdentifier);
+    const finalThreadId = firestoreThread?.id || defaultThreadId;
+
+    const parentFullName = parent.name || `${parent.firstName || ''} ${parent.lastName || ''}`.trim() || parent.email;
+    const childDisplayClass = child ? child.class : (classParents.some(cp => cp.uid === parent.uid) ? teacherClasses[0] : 'Collège/Lycée');
 
     return {
-      threadId: firestoreThread?.id || threadId,
+      threadId: finalThreadId,
       parentId: parent.uid,
-      parentName: parent.name || `${parent.firstName || ''} ${parent.lastName || ''}`.trim() || parent.email,
+      parentName: parentFullName,
       parentEmail: parent.email,
       parentPhone: parent.phone,
       childName: child ? `${child.firstName} ${child.lastName}` : 'Élève',
-      childClass: child ? child.class : teacherClasses[0] || 'Classe',
+      childClass: childDisplayClass,
       lastMessage: firestoreThread?.messages?.slice(-1)[0]?.text || "Aucun message échangé pour l'instant",
       lastTime: firestoreThread?.lastMessageTime || 'Récemment',
       unreadCount: firestoreThread?.unreadCount || 0,
@@ -93,12 +104,39 @@ export const TeacherMessaging: React.FC<TeacherMessagingProps> = ({
     };
   });
 
-  // Set default active thread
+  // Include any extra threads in Firestore that might not belong to a listed parent user
+  threads.forEach(t => {
+    const isAlreadyListed = conversationList.some(c => c.threadId === t.id);
+    if (!isAlreadyListed && (t.teacherId === teacherEmail || t.id.includes(teacherEmail || '') || t.contactRole?.includes('Parent') || t.parentId)) {
+      conversationList.push({
+        threadId: t.id,
+        parentId: t.parentId || t.id,
+        parentName: t.parentName || t.contactName || 'Parent d\'élève',
+        parentEmail: t.parentEmail || '',
+        parentPhone: undefined,
+        childName: t.studentName || 'Élève',
+        childClass: t.studentClass || teacherClasses[0] || 'Classe',
+        lastMessage: t.messages?.slice(-1)[0]?.text || 'Message reçu',
+        lastTime: t.lastMessageTime || 'Récemment',
+        unreadCount: t.unreadCount || 0,
+        messages: t.messages || []
+      });
+    }
+  });
+
+  // Pre-select target parent thread if requested or default to first
   useEffect(() => {
+    if (targetParentId && conversationList.length > 0) {
+      const targetConv = conversationList.find(c => c.parentId === targetParentId || c.threadId.includes(targetParentId));
+      if (targetConv) {
+        setActiveThreadId(targetConv.threadId);
+        return;
+      }
+    }
     if (conversationList.length > 0 && !activeThreadId) {
       setActiveThreadId(conversationList[0].threadId);
     }
-  }, [conversationList, activeThreadId]);
+  }, [conversationList, activeThreadId, targetParentId]);
 
   // Filtered conversations
   const filteredConversations = conversationList.filter(conv => {
@@ -129,11 +167,13 @@ export const TeacherMessaging: React.FC<TeacherMessagingProps> = ({
       id: `msg_${Date.now()}`,
       sender: 'teacher',
       senderName: teacherDisplayName,
+      senderId: teacherEmail || 'teacher',
+      recipientId: activeConv.parentId,
+      recipientName: activeConv.parentName,
+      recipientRole: 'Parent Référent',
       time: timeStr,
       date: 'Aujourd\'hui',
       text: textToSend.trim(),
-      recipientName: activeConv.parentName,
-      recipientRole: 'Parent Référent',
       studentContext: `${activeConv.childName} (${activeConv.childClass})`
     };
 
@@ -141,7 +181,20 @@ export const TeacherMessaging: React.FC<TeacherMessagingProps> = ({
     setIsSending(true);
 
     try {
-      await sendMessageToThreadInFirestore(activeConv.threadId, newMsg);
+      await sendMessageToThreadInFirestore(activeConv.threadId, newMsg, {
+        parentId: activeConv.parentId,
+        parentEmail: activeConv.parentEmail,
+        parentName: activeConv.parentName,
+        teacherId: teacherEmail || 'teacher',
+        teacherEmail: teacherEmail,
+        teacherName: teacherDisplayName,
+        studentName: activeConv.childName,
+        studentClass: activeConv.childClass,
+        contactName: activeConv.parentName,
+        contactRole: 'Parent Référent',
+        studentContext: `${activeConv.childName} (${activeConv.childClass})`,
+        lastMessageTime: timeStr
+      });
     } catch (e) {
       console.warn('Could not persist teacher reply in Firestore:', e);
     } finally {

@@ -162,6 +162,16 @@ export interface SchoolDocument {
 
 export interface MessageThread {
   id: string;
+  parentId?: string;
+  parentEmail?: string;
+  parentName?: string;
+  parentPhone?: string;
+  teacherId?: string;
+  teacherEmail?: string;
+  teacherName?: string;
+  studentId?: string;
+  studentName?: string;
+  studentClass?: string;
   contactName: string;
   contactRole: string;
   avatarUrl?: string;
@@ -172,8 +182,13 @@ export interface MessageThread {
   studentContext: string;
   messages: {
     id: string;
-    sender: 'parent' | 'teacher' | 'school';
+    sender: 'parent' | 'teacher' | 'school' | 'direction';
     senderName: string;
+    senderId?: string;
+    recipientName?: string;
+    recipientRole?: string;
+    recipientId?: string;
+    studentContext?: string;
     time: string;
     date: string;
     text: string;

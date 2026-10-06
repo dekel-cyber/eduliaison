@@ -808,8 +808,109 @@ export function subscribeToMessageThreads(callback: (threads: MessageThread[]) =
   }
 }
 
-// Send a message to a thread in Firestore
-export async function sendMessageToThreadInFirestore(threadId: string, message: any): Promise<void> {
+// Helper: Build canonical thread ID
+export function getCanonicalThreadId(parentIdentifier?: string, teacherIdentifier?: string): string {
+  const cleanP = (parentIdentifier || 'parent').toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '_');
+  const cleanT = (teacherIdentifier || 'teacher').toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '_');
+  return `thread_${cleanP}_${cleanT}`;
+}
+
+// Helper: Match an existing thread in Firestore by multiple robust criteria
+export function findMatchingThread(
+  threads: MessageThread[],
+  parent?: { uid?: string; email?: string; name?: string },
+  teacher?: { uid?: string; email?: string; name?: string },
+  studentId?: string
+): MessageThread | undefined {
+  if (!threads || threads.length === 0) return undefined;
+
+  const pUid = parent?.uid?.toLowerCase().trim() || '';
+  const pEmail = parent?.email?.toLowerCase().trim() || '';
+  const pName = parent?.name?.toLowerCase().trim() || '';
+
+  const tUid = teacher?.uid?.toLowerCase().trim() || '';
+  const tEmail = teacher?.email?.toLowerCase().trim() || '';
+  const tName = teacher?.name?.toLowerCase().trim() || '';
+  const sId = studentId?.toLowerCase().trim() || '';
+
+  return threads.find(t => {
+    const tid = (t.id || '').toLowerCase();
+    const tParentId = (t.parentId || '').toLowerCase();
+    const tParentEmail = (t.parentEmail || '').toLowerCase();
+    const tTeacherId = (t.teacherId || '').toLowerCase();
+    const tTeacherEmail = (t.teacherEmail || '').toLowerCase();
+    const tContactName = (t.contactName || '').toLowerCase();
+
+    // 1. Exact or canonical threadId matching
+    if (pUid && (tid === `thread_${pUid}_teacher` || tid === `thread_${pUid}`)) return true;
+    if (pUid && tUid && (tid === `thread_${pUid}_${tUid}` || tid === `thread_${tUid}_${pUid}`)) return true;
+    if (pUid && tEmail && (tid === getCanonicalThreadId(pUid, tEmail).toLowerCase() || tid.includes(pUid))) {
+      // If thread has teacher metadata or matching email
+      if (!tTeacherId || tTeacherId === tUid || tTeacherEmail === tEmail || tid.includes(tEmail.replace(/[^a-zA-Z0-9_-]/g, '_'))) {
+        return true;
+      }
+    }
+    if (pEmail && tid.includes(pEmail.replace(/[^a-zA-Z0-9_-]/g, '_'))) return true;
+    if (tUid && sId && tid === `thread_${tUid}_${sId}` && (!pUid || tParentId === pUid || tid.includes(pUid))) return true;
+
+    // 2. Metadata field matches
+    const parentMatchesMeta = (pUid && tParentId === pUid) || 
+                             (pEmail && tParentEmail === pEmail) ||
+                             (pEmail && tParentEmail && tParentEmail.includes(pEmail)) ||
+                             (pName && t.parentName && t.parentName.toLowerCase().includes(pName));
+
+    const teacherMatchesMeta = (tUid && tTeacherId === tUid) || 
+                              (tEmail && tTeacherEmail === tEmail) || 
+                              (tName && t.teacherName && t.teacherName.toLowerCase().includes(tName)) ||
+                              (!tTeacherId && !tTeacherEmail);
+
+    if (parentMatchesMeta && teacherMatchesMeta) return true;
+
+    // 3. Contact name matches
+    if (pName && (tContactName.includes(pName) || pName.includes(tContactName))) {
+      if (tUid && tTeacherId && tTeacherId !== tUid) return false;
+      return true;
+    }
+    if (tName && (tContactName.includes(tName) || tName.includes(tContactName))) {
+      if (pUid && tParentId && tParentId !== pUid) return false;
+      return true;
+    }
+
+    // 4. Scan messages in thread for participant matching
+    if (t.messages && t.messages.length > 0) {
+      const hasParentMsg = t.messages.some(m => {
+        const sName = (m.senderName || '').toLowerCase();
+        const rName = (m.recipientName || '').toLowerCase();
+        const sid = (m.senderId || '').toLowerCase();
+        const rid = (m.recipientId || '').toLowerCase();
+        return (pUid && (sid === pUid || rid === pUid)) ||
+               (pEmail && (sName.includes(pEmail) || rName.includes(pEmail))) ||
+               (pName && (sName.includes(pName) || rName.includes(pName)));
+      });
+
+      const hasTeacherMsg = t.messages.some(m => {
+        const sName = (m.senderName || '').toLowerCase();
+        const rName = (m.recipientName || '').toLowerCase();
+        const sid = (m.senderId || '').toLowerCase();
+        const rid = (m.recipientId || '').toLowerCase();
+        return (tUid && (sid === tUid || rid === tUid)) ||
+               (tEmail && (sName.includes(tEmail) || rName.includes(tEmail))) ||
+               (tName && (sName.includes(tName) || rName.includes(tName)));
+      });
+
+      if (hasParentMsg && (hasTeacherMsg || (!tUid && !tEmail && !tName))) return true;
+    }
+
+    return false;
+  });
+}
+
+// Send a message to a thread in Firestore with rich metadata
+export async function sendMessageToThreadInFirestore(
+  threadId: string, 
+  message: any,
+  threadMeta?: Partial<MessageThread>
+): Promise<void> {
   const path = 'message_threads';
   try {
     const threadRef = doc(db, path, threadId);
@@ -819,17 +920,22 @@ export async function sendMessageToThreadInFirestore(threadId: string, message: 
       const updatedMessages = [...(data.messages || []), message];
       await updateDoc(threadRef, {
         messages: updatedMessages,
-        lastMessageTime: message.time || 'À l\'instant'
+        lastMessageTime: message.time || 'À l\'instant',
+        updatedAt: new Date().toISOString(),
+        ...(threadMeta || {})
       });
     } else {
       await setDoc(threadRef, {
         id: threadId,
-        contactName: message.recipientName || 'Interlocuteur',
-        contactRole: message.recipientRole || 'Enseignant / Établissement',
+        contactName: message.recipientName || threadMeta?.contactName || 'Interlocuteur',
+        contactRole: message.recipientRole || threadMeta?.contactRole || 'Enseignant / Établissement',
         lastMessageTime: message.time || 'À l\'instant',
         unreadCount: 0,
-        studentContext: message.studentContext || 'Liaison scolaire',
-        messages: [message]
+        studentContext: message.studentContext || threadMeta?.studentContext || 'Liaison scolaire',
+        messages: [message],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...(threadMeta || {})
       });
     }
   } catch (error) {

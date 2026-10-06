@@ -5,15 +5,19 @@ import {
   sendPasswordResetEmail,
   signOut, 
   updateProfile,
+  updateEmail,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
   fetchSignInMethodsForEmail,
   setPersistence,
   browserLocalPersistence,
   User as FirebaseUser,
   onAuthStateChanged
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, googleProvider, db, handleFirestoreError, OperationType } from './config';
-import { UserRole } from '../types';
+import { UserRole, UserAccount } from '../types';
 
 // Ensure Firebase Auth persistence is set to browserLocalPersistence (localStorage / IndexedDB)
 try {
@@ -115,6 +119,144 @@ export function clearPersistentSession(): void {
     localStorage.removeItem(STORAGE_KEYS.USER_EMAIL);
   } catch (e) {
     console.warn('Failed to clear session from localStorage:', e);
+  }
+}
+
+/**
+ * Update full user profile in Firestore and sync Firebase Auth display name
+ */
+export async function updateFullUserProfile(
+  uid: string, 
+  updates: Partial<UserAccount> & { firstName?: string; lastName?: string; address?: string; bio?: string; photoUrl?: string; notificationPreferences?: any }
+): Promise<void> {
+  const path = 'users';
+  const cleanEmail = updates.email ? updates.email.toLowerCase().trim() : undefined;
+  
+  // Format full name
+  let calculatedName = updates.name;
+  if (updates.firstName || updates.lastName) {
+    calculatedName = `${updates.firstName || ''} ${updates.lastName || ''}`.trim();
+  }
+
+  const payload: any = {
+    ...updates,
+    updatedAt: new Date().toISOString()
+  };
+  if (cleanEmail) payload.email = cleanEmail;
+  if (calculatedName) payload.name = calculatedName;
+
+  try {
+    const userDocRef = doc(db, path, uid);
+    await updateDoc(userDocRef, payload);
+
+    // Sync Firebase Auth Display Name if current user matches
+    if (auth.currentUser && auth.currentUser.uid === uid && calculatedName) {
+      try {
+        await updateProfile(auth.currentUser, { displayName: calculatedName });
+      } catch (e) {
+        console.warn('Could not update Firebase Auth profile display name:', e);
+      }
+    }
+
+    // Sync persistent session
+    if (updates.role || calculatedName || cleanEmail) {
+      const storedRole = (localStorage.getItem(STORAGE_KEYS.ROLE) as UserRole) || updates.role || 'parent';
+      savePersistentSession(
+        updates.role || storedRole, 
+        { name: calculatedName || localStorage.getItem(STORAGE_KEYS.USER_NAME) || undefined, email: cleanEmail || localStorage.getItem(STORAGE_KEYS.USER_EMAIL) || undefined }
+      );
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `${path}/${uid}`);
+    throw error;
+  }
+}
+
+/**
+ * Change / Update user Email address with optional reauthentication
+ */
+export async function updateUserEmailAddress(newEmail: string, currentPassword?: string): Promise<void> {
+  const cleanEmail = newEmail.toLowerCase().trim();
+  const currentUser = auth.currentUser;
+
+  if (!currentUser) {
+    // If working with persistent synthetic session, update Firestore & storage directly
+    const storedEmail = localStorage.getItem(STORAGE_KEYS.USER_EMAIL);
+    if (storedEmail) {
+      const q = query(collection(db, 'users'), where('email', '==', storedEmail.toLowerCase()));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        await updateDoc(doc(db, 'users', snap.docs[0].id), {
+          email: cleanEmail,
+          updatedAt: new Date().toISOString()
+        });
+      }
+      localStorage.setItem(STORAGE_KEYS.USER_EMAIL, cleanEmail);
+    }
+    return;
+  }
+
+  try {
+    if (currentPassword && currentUser.email) {
+      const cred = EmailAuthProvider.credential(currentUser.email, currentPassword);
+      await reauthenticateWithCredential(currentUser, cred);
+    }
+
+    await updateEmail(currentUser, cleanEmail);
+
+    // Update in Firestore
+    await updateDoc(doc(db, 'users', currentUser.uid), {
+      email: cleanEmail,
+      updatedAt: new Date().toISOString()
+    });
+
+    localStorage.setItem(STORAGE_KEYS.USER_EMAIL, cleanEmail);
+  } catch (err: any) {
+    if (err.code === 'auth/requires-recent-login') {
+      throw new Error("Cette opération nécessite une confirmation de sécurité. Veuillez saisir votre mot de passe actuel.");
+    }
+    if (err.code === 'auth/email-already-in-use') {
+      throw new Error("Cette adresse email est déjà associée à un autre compte existant.");
+    }
+    if (err.code === 'auth/invalid-email') {
+      throw new Error("Format d'adresse email invalide.");
+    }
+    throw new Error(err.message || "Impossible de mettre à jour l'adresse email.");
+  }
+}
+
+/**
+ * Change / Update user Password with security checks
+ */
+export async function updateUserPassword(newPassword: string, currentPassword?: string): Promise<void> {
+  const currentUser = auth.currentUser;
+
+  if (!currentUser) {
+    throw new Error("Vous devez être connecté pour modifier votre mot de passe.");
+  }
+
+  if (newPassword.length < 6) {
+    throw new Error("Le nouveau mot de passe doit comporter au moins 6 caractères.");
+  }
+
+  try {
+    if (currentPassword && currentUser.email) {
+      const cred = EmailAuthProvider.credential(currentUser.email, currentPassword);
+      await reauthenticateWithCredential(currentUser, cred);
+    }
+
+    await updatePassword(currentUser, newPassword);
+  } catch (err: any) {
+    if (err.code === 'auth/requires-recent-login') {
+      throw new Error("Veuillez confirmer votre mot de passe actuel pour sécuriser ce changement.");
+    }
+    if (err.code === 'auth/wrong-password') {
+      throw new Error("Le mot de passe actuel saisi est incorrect.");
+    }
+    if (err.code === 'auth/weak-password') {
+      throw new Error("Le mot de passe est trop faible. Veuillez choisir une combinaison plus robuste.");
+    }
+    throw new Error(err.message || "Impossible de mettre à jour le mot de passe.");
   }
 }
 

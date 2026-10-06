@@ -37,6 +37,9 @@ import { TeacherMessaging } from './components/teacher/TeacherMessaging';
 // Admin / Direction Views
 import { AdminDashboard } from './components/admin/AdminDashboard';
 
+// Profile & Account Settings View
+import { UserProfileSettings } from './components/profile/UserProfileSettings';
+
 function getDefaultDashboardForRole(role: UserRole): string {
   if (role === 'parent') return 'parent-dashboard';
   if (role === 'enseignant') return 'teacher-dashboard';
@@ -70,6 +73,7 @@ export default function App() {
   const [activeStudentId, setActiveStudentId] = useState<string>('awa');
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [authTargetRole, setAuthTargetRole] = useState<UserRole>('parent');
+  const [targetParentMessagingId, setTargetParentMessagingId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     // If URL has reset parameter, always force auth page
@@ -204,7 +208,7 @@ export default function App() {
   };
 
   // Navigation tab switcher with persistent tracking
-  const handleNavigateTab = (tab: string) => {
+  const handleNavigateTab = (tab: string, targetId?: string) => {
     if (tab === 'landing') {
       setActiveTab('landing');
       return;
@@ -212,6 +216,9 @@ export default function App() {
     if (!isAuthenticated && tab !== 'auth') {
       handleOpenAuth('login');
       return;
+    }
+    if (targetId) {
+      setTargetParentMessagingId(targetId);
     }
     setActiveTab(tab);
     if (isAuthenticated && tab !== 'auth') {
@@ -362,6 +369,7 @@ export default function App() {
           <TeacherMessaging
             onNavigateTab={handleNavigateTab}
             userName={currentUser?.name}
+            targetParentId={targetParentMessagingId}
             currentTeacher={currentTeacherAccount || {
               name: currentUser?.name || 'Professeur',
               email: currentUser?.email,
@@ -374,6 +382,17 @@ export default function App() {
         {/* 5. Protected Admin & Direction Portal Views */}
         {isAuthenticated && activeTab === 'admin-dashboard' && (
           <AdminDashboard />
+        )}
+
+        {/* 6. Protected User Profile & Account Settings View */}
+        {isAuthenticated && activeTab === 'profile' && (
+          <UserProfileSettings
+            currentRole={currentRole}
+            userName={currentUser?.name}
+            userEmail={currentUser?.email}
+            onNavigateTab={handleNavigateTab}
+            onLogout={handleLogout}
+          />
         )}
       </main>
 

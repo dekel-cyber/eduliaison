@@ -4,13 +4,15 @@ import {
   subscribeToStudents, 
   subscribeToClasses, 
   subscribeToUsers, 
-  subscribeToMessageThreads,
+  subscribeToMessageThreads, 
   sendMessageToThreadInFirestore,
+  getCanonicalThreadId,
+  findMatchingThread,
   logActivityInFirestore 
 } from '../../firebase/firestoreService';
 
 interface TeacherDashboardProps {
-  onNavigateTab: (tab: string) => void;
+  onNavigateTab: (tab: string, targetId?: string) => void;
   userName?: string;
   currentTeacher?: {
     name?: string;
@@ -21,9 +23,9 @@ interface TeacherDashboardProps {
 }
 
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ 
-  onNavigateTab,
+  onNavigateTab, 
   userName,
-  currentTeacher
+  currentTeacher 
 }) => {
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<SchoolClass[]>([]);
@@ -55,7 +57,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+    setTimeout(() => setToastMessage(null), 4500);
   };
 
   const teacherDisplayName = userName || currentTeacher?.name || 'Professeur';
@@ -69,12 +71,17 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   // Students belonging strictly to this teacher's assigned classes
   const assignedStudents = students.filter(s => teacherClasses.includes(s.class));
 
-  // Eligible parents to contact: parents of assigned students
-  const eligibleParents = users.filter(u => 
+  // Parents list: prioritize assigned class parents, followed by other registered parents
+  const classParents = users.filter(u => 
     u.role === 'parent' && 
     (u.childrenIds?.some(cid => assignedStudents.some(as => as.id === cid)) ||
      assignedStudents.some(as => as.parentEmail?.toLowerCase() === u.email?.toLowerCase()))
   );
+  const otherParents = users.filter(u => 
+    u.role === 'parent' && 
+    !classParents.some(cp => cp.uid === u.uid)
+  );
+  const eligibleParents = [...classParents, ...otherParents];
 
   const handleQuickRollcall = async () => {
     setCallingRoll(true);
@@ -101,29 +108,59 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     e.preventDefault();
     if (!teacherMsgText.trim() || !selectedParentId) return;
 
-    const parent = eligibleParents.find(p => p.uid === selectedParentId);
+    const parent = eligibleParents.find(p => p.uid === selectedParentId) || users.find(u => u.uid === selectedParentId);
     if (!parent) return;
 
-    const threadId = `thread_${parent.uid}_teacher`;
+    // Find student associated with parent
+    const child = students.find(s => 
+      s.parentId === parent.uid || 
+      (parent.childrenIds && parent.childrenIds.includes(s.id)) ||
+      (s.parentEmail && s.parentEmail.toLowerCase().trim() === parent.email?.toLowerCase().trim())
+    ) || assignedStudents[0];
+
+    const teacherIdentifier = currentTeacher?.email || currentTeacher?.name || 'teacher';
+    const existingThread = findMatchingThread(threads, parent, currentTeacher, child?.id);
+    const threadId = existingThread ? existingThread.id : getCanonicalThreadId(parent.uid, teacherIdentifier);
+
     const now = new Date();
     const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 
     setIsSendingMsg(true);
     try {
+      const parentFullName = parent.name || `${parent.firstName || ''} ${parent.lastName || ''}`.trim() || parent.email;
+      const contextText = child ? `${child.firstName} ${child.lastName} (${child.class})` : `Suivi pédagogique (${teacherClasses.join(', ')})`;
+
       await sendMessageToThreadInFirestore(threadId, {
         id: `msg_${Date.now()}`,
         sender: 'teacher',
         senderName: teacherDisplayName,
+        senderId: currentTeacher?.email || 'teacher',
+        recipientId: parent.uid,
+        recipientName: parentFullName,
+        recipientRole: 'Parent Référent',
         time: timeStr,
         date: 'Aujourd\'hui',
         text: teacherMsgText.trim(),
-        recipientName: parent.name || parent.email,
-        recipientRole: 'Parent Référent',
-        studentContext: `Suivi classe de ${teacherClasses.join(', ')}`
+        studentContext: contextText
+      }, {
+        parentId: parent.uid,
+        parentEmail: parent.email,
+        parentName: parentFullName,
+        teacherId: currentTeacher?.email || 'teacher',
+        teacherEmail: currentTeacher?.email,
+        teacherName: teacherDisplayName,
+        studentId: child?.id,
+        studentName: child ? `${child.firstName} ${child.lastName}` : undefined,
+        studentClass: child?.class,
+        contactName: parentFullName,
+        contactRole: 'Parent Référent',
+        studentContext: contextText,
+        lastMessageTime: timeStr
       });
+
       setTeacherMsgText('');
       setSelectedParentId('');
-      showToast(`Message transmis avec succès à ${parent.name || parent.email} !`);
+      showToast(`Message transmis avec succès à ${parentFullName} ! Rendez-vous dans la messagerie pour poursuivre.`);
     } catch (err: any) {
       showToast("Erreur d'envoi du message.");
     } finally {
@@ -332,10 +369,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               <div className="flex items-center justify-between pb-3 border-b border-[#eaedff]">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-[#3525cd]">chat</span>
-                  <h3 className="text-base font-bold text-[#131b2e]">Messagerie avec les Parents</h3>
+                  <h3 className="text-base font-bold text-[#131b2e]">Messagerie</h3>
                 </div>
                 <button 
-                  onClick={() => onNavigateTab('teacher-messaging')}
+                  onClick={() => onNavigateTab('teacher-messaging', selectedParentId || undefined)}
                   className="text-xs font-bold text-[#3525cd] hover:underline cursor-pointer flex items-center gap-1"
                 >
                   <span>Ouvrir l'espace complet</span>

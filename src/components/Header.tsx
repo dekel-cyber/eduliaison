@@ -40,10 +40,12 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
   onOpenAuth,
-  userName
+  userName,
+  userEmail
 }) => {
   const [showStudentDropdown, setShowStudentDropdown] = useState(false);
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
@@ -56,6 +58,7 @@ export const Header: React.FC<HeaderProps> = ({
         setOpenDropdownId(null);
         setShowStudentDropdown(false);
         setShowRoleDropdown(false);
+        setShowUserDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -491,24 +494,85 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full ring-2 ring-white"></span>
           </button>
 
-          {/* User Profile & Logout */}
-          <div className="flex items-center gap-2">
-            {userName && (
-              <div className="hidden md:flex flex-col text-right">
-                <span className="text-xs font-bold text-slate-900 leading-tight">{userName}</span>
-                <span className="text-[10px] text-slate-500 capitalize">{currentRole}</span>
+          {/* User Profile & Menu */}
+          <div className="relative">
+            <button 
+              onClick={() => {
+                setShowUserDropdown(!showUserDropdown);
+                setShowRoleDropdown(false);
+                setOpenDropdownId(null);
+              }}
+              className="flex items-center gap-2 p-1.5 sm:px-3 sm:py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all border border-slate-200 cursor-pointer shadow-2xs"
+              title="Menu Profil & Compte"
+            >
+              <div className="w-6 h-6 rounded-full bg-[#3525cd] text-white flex items-center justify-center text-[11px] font-bold">
+                {userName ? userName[0].toUpperCase() : 'U'}
+              </div>
+              {userName && (
+                <div className="hidden md:flex flex-col text-left leading-tight">
+                  <span className="text-xs font-bold text-slate-900 truncate max-w-[120px]">{userName}</span>
+                  <span className="text-[10px] text-slate-500 capitalize">{currentRole}</span>
+                </div>
+              )}
+              <span className={`material-symbols-outlined text-[16px] text-slate-500 transition-transform ${showUserDropdown ? 'rotate-180' : ''}`}>
+                expand_more
+              </span>
+            </button>
+
+            {/* Profile Dropdown Menu */}
+            {showUserDropdown && (
+              <div 
+                className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-50 animate-in fade-in zoom-in-95 duration-150"
+                onClick={() => setShowUserDropdown(false)}
+              >
+                <div className="p-3 bg-[#faf8ff] rounded-xl mb-2 border border-[#eaedff]">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-[#3525cd] text-white flex items-center justify-center font-bold text-sm">
+                      {userName ? userName[0].toUpperCase() : 'U'}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-xs font-bold text-slate-900 truncate">{userName || 'Utilisateur'}</h4>
+                      <p className="text-[10px] text-slate-500 truncate">{userEmail || 'compte@eduliaison.ci'}</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-[10px] text-slate-600 font-semibold pt-1.5 border-t border-[#eaedff]">
+                    <span>Rôle : <strong className="capitalize text-[#3525cd]">{currentRole}</strong></span>
+                    <span className="text-emerald-600">● Connecté</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setActiveTab('profile')}
+                  className={`w-full flex items-center gap-2.5 p-2.5 rounded-xl text-xs text-left cursor-pointer transition-colors ${
+                    activeTab === 'profile' ? 'bg-indigo-50 text-indigo-700 font-bold' : 'hover:bg-slate-50 text-slate-800'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[18px] text-[#3525cd]">manage_accounts</span>
+                  <div>
+                    <div className="font-bold">Mon Profil & Paramètres</div>
+                    <div className="text-[10px] text-slate-500">Nom, Email, Mot de passe, Alertes</div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab(currentRole === 'parent' ? 'parent-dashboard' : currentRole === 'enseignant' ? 'teacher-dashboard' : 'admin-dashboard')}
+                  className="w-full flex items-center gap-2.5 p-2 rounded-xl text-xs text-left text-slate-700 hover:bg-slate-50 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[18px] text-slate-500">space_dashboard</span>
+                  <span>Tableau de bord</span>
+                </button>
+
+                <div className="my-1 border-t border-slate-100"></div>
+
+                <button 
+                  onClick={onOpenAuth}
+                  className="w-full flex items-center gap-2 p-2 rounded-xl text-xs text-left text-rose-600 hover:bg-rose-50 cursor-pointer font-semibold transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[18px]">logout</span>
+                  <span>Se déconnecter</span>
+                </button>
               </div>
             )}
-            <button 
-              onClick={onOpenAuth}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-800 text-xs font-bold transition-all border border-slate-200 cursor-pointer"
-              title="Déconnexion"
-            >
-              <div className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[11px]">
-                <span className="material-symbols-outlined text-[13px]">person</span>
-              </div>
-              <span className="hidden sm:inline">Déconnexion</span>
-            </button>
           </div>
 
           {/* Mobile menu trigger */}
@@ -576,6 +640,38 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </div>
           ))}
+
+          {/* Quick Profile in Mobile Menu */}
+          <div className="pt-3 border-t border-slate-200 space-y-2">
+            <button
+              onClick={() => {
+                setActiveTab('profile');
+                setShowMobileMenu(false);
+              }}
+              className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center justify-between ${
+                activeTab === 'profile'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-base">manage_accounts</span>
+                <span>Mon Profil & Paramètres</span>
+              </div>
+              <span className="material-symbols-outlined text-sm">chevron_right</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onOpenAuth();
+                setShowMobileMenu(false);
+              }}
+              className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 transition-colors cursor-pointer flex items-center gap-2"
+            >
+              <span className="material-symbols-outlined text-base">logout</span>
+              <span>Se déconnecter</span>
+            </button>
+          </div>
         </div>
       )}
     </header>
