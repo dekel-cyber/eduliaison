@@ -63,11 +63,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               href="#" 
               onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
             >
-              <img 
-                alt="EduLiaison" 
-                className="h-10 w-auto object-contain" 
-                src="https://lh3.googleusercontent.com/aida/AEtjO1X3maonHE-9SKoLofrTAufgXUxQGdVFUYD4amhrtAl0TtbQYPetw5peT7cgndgtaSk8tVrVueH_8Q1ULhMqVtaViK0QMnwD94cJionDyL5TFhDDkuEw6Iby53N9Q5r-REjn15t0fHZocI7oIkPEbxGzZdCZTxfWiJoeCkSzz_6qNorgVldLhCLdG6wqH29Fu9GAJpGgit5yKDaD3cFsQpFww0pByr_V3JF0OMZdD_X8"
-              />
+              <div className="flex items-center gap-2.5">
+                <img 
+                  alt="EduLiaison" 
+                  className="h-10 w-10 rounded-xl object-cover shadow-xs" 
+                  src="/logo.png"
+                />
+                <div className="flex flex-col">
+                  <span className="font-black text-xl text-[#131b2e] leading-tight tracking-tight">
+                    Edu<span className="text-[#3525cd]">Liaison</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-[#777587] tracking-wider uppercase leading-none">
+                    Carnet Scolaire Numérique
+                  </span>
+                </div>
+              </div>
             </a>
           </div>
 
@@ -966,12 +976,20 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 pb-12 border-b border-[#eaedff]">
             {/* Col 1: Logo & Vision */}
             <div className="lg:col-span-2 flex flex-col gap-4">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <img 
                   alt="EduLiaison" 
-                  className="h-10 w-auto object-contain" 
-                  src="https://lh3.googleusercontent.com/aida/AEtjO1X3maonHE-9SKoLofrTAufgXUxQGdVFUYD4amhrtAl0TtbQYPetw5peT7cgndgtaSk8tVrVueH_8Q1ULhMqVtaViK0QMnwD94cJionDyL5TFhDDkuEw6Iby53N9Q5r-REjn15t0fHZocI7oIkPEbxGzZdCZTxfWiJoeCkSzz_6qNorgVldLhCLdG6wqH29Fu9GAJpGgit5yKDaD3cFsQpFww0pByr_V3JF0OMZdD_X8"
+                  className="h-10 w-10 rounded-xl object-cover shadow-xs" 
+                  src="/logo.png"
                 />
+                <div className="flex flex-col">
+                  <span className="font-black text-xl text-[#131b2e] leading-tight tracking-tight">
+                    Edu<span className="text-[#3525cd]">Liaison</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-[#777587] tracking-wider uppercase leading-none">
+                    Carnet Scolaire Numérique
+                  </span>
+                </div>
               </div>
               <p className="text-xs sm:text-sm text-[#464555] max-w-md leading-relaxed">
                 La plateforme intégrée de carnet de liaison, bulletins scolaires biométriques et suivi des frais en temps réel, conçue pour réinventer la réussite éducative à travers le continent africain.

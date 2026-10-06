@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import nodemailer, { type SendMailOptions, type Transporter } from 'nodemailer';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 dotenv.config();
@@ -13,6 +14,33 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+
+// Public static assets & social preview images with CORS & caching
+const publicDir = path.join(__dirname, 'public');
+if (fs.existsSync(publicDir)) {
+  app.use(express.static(publicDir, {
+    maxAge: '1d',
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.png') || filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+      }
+    }
+  }));
+}
+
+// Explicit endpoints for social media crawlers (WhatsApp, Facebook, Twitter/X, LinkedIn)
+app.get(['/og-image.jpg', '/og-image.png', '/logo.png', '/logo.jpg', '/favicon.png', '/eduliaison-preview.jpg'], (req, res) => {
+  const fileName = path.basename(req.path);
+  const filePath = path.join(publicDir, fileName);
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Content-Type', fileName.endsWith('.png') ? 'image/png' : 'image/jpeg');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.sendFile(filePath);
+  }
+  res.status(404).send('Image not found');
+});
 
 // In-memory secure store for password reset verification codes
 // Map<cleanEmail, { code: string; token: string; expiresAt: number }>
@@ -347,8 +375,27 @@ async function startServer() {
   } else {
     const distPath = path.join(__dirname, 'dist');
     app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.get('*', (req, res) => {
+      const indexPath = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        try {
+          const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+          const host = req.get('host') || 'eduliaison.ci';
+          const baseUrl = `${proto}://${host}`;
+          let html = fs.readFileSync(indexPath, 'utf-8');
+          
+          // Dynamically ensure absolute URLs for OpenGraph and Twitter cards
+          html = html
+            .replace(/content="\/og-image\.jpg"/g, `content="${baseUrl}/og-image.jpg"`)
+            .replace(/content="\/logo\.png"/g, `content="${baseUrl}/logo.png"`)
+            .replace(/href="\/logo\.png"/g, `href="${baseUrl}/logo.png"`);
+
+          return res.send(html);
+        } catch (e) {
+          return res.sendFile(indexPath);
+        }
+      }
+      res.status(404).send('Not Found');
     });
   }
 
