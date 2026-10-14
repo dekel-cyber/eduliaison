@@ -23,7 +23,8 @@ import {
   TimelineEvent, 
   AttendanceRecord, 
   SchoolDocument,
-  MessageThread 
+  MessageThread,
+  SubscriptionPlan 
 } from '../types';
 import { 
   STUDENTS_DATA, 
@@ -46,6 +47,7 @@ export const INITIAL_CLASSES: SchoolClass[] = [
 // Initial Users Data for Seeding
 export const INITIAL_USERS: UserAccount[] = [
   { uid: 'dir-principal', email: 'direction@eduliaison.ci', name: 'Direction Générale (Proviseur)', firstName: 'Amadou', lastName: 'Sow', role: 'direction', phone: '+225 07 00 00 00 01', status: 'Actif', createdAt: '2025-01-01T08:00:00Z' },
+  { uid: 'dir-dekel', email: 'dekelshoot.dev@gmail.com', name: 'Dekel Admin (Direction)', firstName: 'Dekel', lastName: 'Admin', role: 'direction', phone: '+225 07 00 00 00 02', status: 'Actif', createdAt: '2025-01-01T08:00:00Z' },
   { uid: 't-toure', email: 'enseignant.test@eduliaison.ci', name: 'Mme Aya Touré', firstName: 'Aya', lastName: 'Touré', role: 'enseignant', phone: '+225 07 11 22 33 44', status: 'Actif', assignedClasses: ['3ème A', '3ème B'], subjects: ['Français', 'Littérature Africaine'], createdAt: '2025-01-05T09:00:00Z' },
   { uid: 't-kouassi', email: 'patrice.kouassi@eduliaison.ci', name: 'M. Patrice Kouassi', firstName: 'Patrice', lastName: 'Kouassi', role: 'enseignant', phone: '+225 05 99 88 77 66', status: 'Actif', assignedClasses: ['3ème A', '3ème B', '2nde C', 'Tle C'], subjects: ['Mathématiques'], createdAt: '2025-01-06T10:00:00Z' },
   { uid: 't-brou', email: 'sylvie.brou@eduliaison.ci', name: 'Mme Sylvie Brou', firstName: 'Sylvie', lastName: 'Brou', role: 'enseignant', phone: '+225 01 23 45 67 89', status: 'Actif', assignedClasses: ['4ème C', '3ème A'], subjects: ['Histoire-Géographie'], createdAt: '2025-01-07T11:00:00Z' },
@@ -63,9 +65,98 @@ export const INITIAL_ACTIVITY_LOGS: ActivityLog[] = [
   { id: 'act-1', type: 'student_created', title: 'Nouvel élève inscrit', description: 'Création et attribution de matricule pour Awa Kouamé en classe de 3ème A', actorName: 'Direction Générale', actorRole: 'direction', targetName: 'Awa Kouamé (3ème A)', timestamp: 'Aujourd\'hui à 08:30', category: 'admin' },
   { id: 'act-2', type: 'parent_associated', title: 'Association Parent → Élève', description: 'M. Jean-Baptiste Kouamé associé aux élèves Awa Kouamé et David Kouamé', actorName: 'Direction Générale', actorRole: 'direction', targetName: 'M. Jean-Baptiste Kouamé', timestamp: 'Aujourd\'hui à 09:15', category: 'admin' },
   { id: 'act-3', type: 'teacher_assigned', title: 'Affectation de professeur', description: 'Mme Aya Touré assignée comme Professeur Principal de la classe de 3ème A (Français)', actorName: 'Direction Générale', actorRole: 'direction', targetName: 'Mme Aya Touré (3ème A)', timestamp: 'Hier à 14:00', category: 'pedagogie' },
-  { id: 'act-4', type: 'circular_sent', title: 'Circulaire N°04 diffusée', description: 'Convocation officielle réunion parents-professeurs envoyée à 1 200 familles', actorName: 'Secrétariat Direction', actorRole: 'direction', targetName: 'Toutes les familles', timestamp: 'Hier à 16:30', category: 'system' },
+  { id: 'act-4', type: 'circular_sent', title: 'Circulaire N°04 diffusée', description: 'Convocation officielle réunion parents-professurs envoyée à 1 200 familles', actorName: 'Secrétariat Direction', actorRole: 'direction', targetName: 'Toutes les familles', timestamp: 'Hier à 16:30', category: 'system' },
   { id: 'act-5', type: 'role_assigned', title: 'Attribution de rôle', description: 'Compte de Mme Christine Koffi validé avec succès en rôle Parent Référent', actorName: 'Direction Générale', actorRole: 'direction', targetName: 'Mme Christine Koffi', timestamp: 'Il y a 2 jours', category: 'admin' }
 ];
+
+// Initial Subscription Plans Data for Seeding
+export const INITIAL_SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
+  {
+    id: 'plan_1500',
+    name: 'Collège / Primaire Essentiel',
+    price: 1500,
+    period: 'FCFA / élève / an',
+    description: 'Idéal pour numériser le carnet de liaison et fluidifier les alertes présences de base.',
+    buttonText: 'Choisir cette formule',
+    redirectUrl: 'https://wa.me/22507000000?text=Je%20souhaite%20souscrire%20au%20plan%201500%20FCFA',
+    features: [
+      'Carnet de liaison numérique',
+      'Relevé d\'absences et retards',
+      'Notifications par Push Mobile',
+      'Support technique par email'
+    ],
+    popular: false
+  },
+  {
+    id: 'plan_2100',
+    name: 'Institution Complète',
+    price: 2100,
+    period: 'FCFA / élève / an',
+    description: 'La solution intégrale : bulletins officiels, suivi financier et SMS illimités.',
+    buttonText: 'Choisir cette formule',
+    redirectUrl: 'https://wa.me/22507000000?text=Je%20souhaite%20souscrire%20au%20plan%202100%20FCFA',
+    features: [
+      'Tout le pack Essentiel',
+      'Bulletins officiels avec QR de sécurité',
+      'Passerelle SMS Directe & WhatsApp',
+      'Suivi des paiements Mobile Money',
+      'Formation offerte sur site aux professeurs'
+    ],
+    popular: true
+  },
+  {
+    id: 'plan_15000',
+    name: 'Réseau & Groupes Scolaires (Institutionnel)',
+    price: 15000,
+    period: 'FCFA / mois ou forfait global',
+    description: 'Pour les réseaux de plus de 2 000 élèves, congrégations et groupes scolaires multi-sites.',
+    buttonText: 'Démarrer le déploiement',
+    redirectUrl: 'https://wa.me/22507000000?text=Je%20souhaite%20démarrer%20le%20déploiement%20du%20plan%2015000%20FCFA',
+    features: [
+      'Hébergement dédié local',
+      'Intégration comptable ERP & SIGE',
+      'Responsable de compte dédié',
+      'SLA garanti 99.9%'
+    ],
+    popular: false
+  }
+];
+
+export async function ensureDekelAdminExists() {
+  try {
+    const cleanEmail = 'dekelshoot.dev@gmail.com';
+    const usersQuery = query(collection(db, 'users'), where('email', '==', cleanEmail));
+    const querySnap = await getDocs(usersQuery);
+    if (querySnap.empty) {
+      const uid = 'dir_dekelshoot';
+      await setDoc(doc(db, 'users', uid), {
+        uid,
+        email: cleanEmail,
+        name: 'Dekel Admin',
+        firstName: 'Dekel',
+        lastName: 'Admin',
+        role: 'direction',
+        status: 'Actif',
+        createdAt: new Date().toISOString()
+      });
+    } else {
+      const docSnap = querySnap.docs[0];
+      await updateDoc(doc(db, 'users', docSnap.id), {
+        role: 'direction',
+        status: 'Actif',
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    await setDoc(doc(db, 'registered_emails', encodeURIComponent(cleanEmail)), {
+      email: cleanEmail,
+      role: 'direction',
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+  } catch (err) {
+    console.warn("Could not ensure Dekel admin exists:", err);
+  }
+}
 
 /**
  * Seed initial dataset to Firestore if collections are empty
@@ -102,6 +193,9 @@ export async function seedInitialDataIfEmpty() {
       }
     }
 
+    // Always ensure Dekel admin account has direction role
+    await ensureDekelAdminExists();
+
     // 4. Seed activity logs
     const logsSnap = await getDocs(collection(db, 'activity_logs'));
     if (logsSnap.empty) {
@@ -125,10 +219,50 @@ export async function seedInitialDataIfEmpty() {
         await setDoc(doc(db, 'school_documents', sdoc.id), sdoc);
       }
     }
+
+    // 7. Seed subscription plans
+    const plansSnap = await getDocs(collection(db, 'subscription_plans'));
+    if (plansSnap.empty) {
+      for (const p of INITIAL_SUBSCRIPTION_PLANS) {
+        await setDoc(doc(db, 'subscription_plans', p.id), p);
+      }
+    }
   } catch (error) {
     console.warn("Could not check/seed Firestore initial data:", error);
   }
 }
+
+export function subscribeToSubscriptionPlans(callback: (plans: SubscriptionPlan[]) => void) {
+  const path = 'subscription_plans';
+  try {
+    const q = query(collection(db, path), orderBy('price', 'asc'));
+    return onSnapshot(q, (snapshot) => {
+      const plans = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SubscriptionPlan));
+      callback(plans.length > 0 ? plans : INITIAL_SUBSCRIPTION_PLANS);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, path);
+      callback(INITIAL_SUBSCRIPTION_PLANS);
+    });
+  } catch (error) {
+    console.warn("Error subscribing to subscription plans:", error);
+    callback(INITIAL_SUBSCRIPTION_PLANS);
+    return () => {};
+  }
+}
+
+export async function updateSubscriptionPlanInFirestore(planId: string, updates: Partial<SubscriptionPlan>) {
+  const path = `subscription_plans/${planId}`;
+  try {
+    await updateDoc(doc(db, 'subscription_plans', planId), {
+      ...updates,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    throw error;
+  }
+}
+
 
 // ==========================================
 // 1. STUDENTS MANAGEMENT (Direction Only)
@@ -940,6 +1074,55 @@ export async function sendMessageToThreadInFirestore(
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${path}/${threadId}`);
+  }
+}
+
+export interface WebhookLog {
+  id: string;
+  planId: string;
+  event: string;
+  status: 'success' | 'failed' | 'pending';
+  customerEmail: string;
+  customerName: string;
+  payload: string;
+  timestamp: string;
+}
+
+export function subscribeToWebhookLogs(callback: (logs: WebhookLog[]) => void) {
+  const path = 'webhook_logs';
+  try {
+    const q = query(collection(db, path), orderBy('timestamp', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+      const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WebhookLog));
+      callback(logs);
+    }, (error) => {
+      console.warn('Webhook logs snapshot error:', error);
+      callback([]);
+    });
+  } catch (error) {
+    console.warn("Error subscribing to webhook logs:", error);
+    callback([]);
+    return () => {};
+  }
+}
+
+export async function simulateWebhookInFirestore(planId: string, customerEmail: string, customerName: string) {
+  try {
+    const res = await fetch(`/api/webhooks/${planId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'payment.success',
+        email: customerEmail,
+        name: customerName,
+        amount: planId === 'plan_1500' ? 1500 : planId === 'plan_2100' ? 2100 : 15000,
+        currency: 'XOF',
+        gateway: 'CinetPay / Fedapay / Orange Money (Simulation)'
+      })
+    });
+    return await res.json();
+  } catch (err: any) {
+    throw new Error(err.message || 'Erreur lors de la simulation du webhook');
   }
 }
 

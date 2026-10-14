@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { UserRole } from '../types';
+import React, { useState, useEffect } from 'react';
+import { UserRole, SubscriptionPlan } from '../types';
+import { subscribeToSubscriptionPlans } from '../firebase/firestoreService';
 
 interface LandingPageProps {
   onOpenAuth: (mode?: 'login' | 'signup', targetRole?: UserRole) => void;
@@ -20,6 +21,51 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [newsletterSuccess, setNewsletterSuccess] = useState(false);
   const [activeShowcaseTab, setActiveShowcaseTab] = useState<'timeline' | 'grades' | 'attendance' | 'bulletins'>('timeline');
+
+  const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([
+    {
+      id: 'plan_1500',
+      name: 'Collège / Primaire Essentiel',
+      price: 1500,
+      period: 'FCFA / élève / an',
+      description: 'Idéal pour numériser le carnet de liaison et fluidifier les alertes présences de base.',
+      buttonText: 'Choisir cette formule',
+      redirectUrl: 'https://wa.me/22507000000?text=Je%20souhaite%20souscrire%20au%20plan%201500%20FCFA',
+      features: ['Carnet de liaison numérique', 'Relevé d\'absences et retards', 'Notifications par Push Mobile', 'Support technique par email'],
+      popular: false
+    },
+    {
+      id: 'plan_2100',
+      name: 'Institution Complète',
+      price: 2100,
+      period: 'FCFA / élève / an',
+      description: 'La solution intégrale : bulletins officiels, suivi financier et SMS illimités.',
+      buttonText: 'Choisir cette formule',
+      redirectUrl: 'https://wa.me/22507000000?text=Je%20souhaite%20souscrire%20au%20plan%202100%20FCFA',
+      features: ['Tout le pack Essentiel', 'Bulletins officiels avec QR de sécurité', 'Passerelle SMS Directe & WhatsApp', 'Suivi des paiements Mobile Money', 'Formation offerte sur site aux professeurs'],
+      popular: true
+    },
+    {
+      id: 'plan_15000',
+      name: 'Réseau & Groupes Scolaires (Institutionnel)',
+      price: 15000,
+      period: 'FCFA / mois ou forfait global',
+      description: 'Pour les réseaux de plus de 2 000 élèves, congrégations et groupes scolaires multi-sites.',
+      buttonText: 'Démarrer le déploiement',
+      redirectUrl: 'https://wa.me/22507000000?text=Je%20souhaite%20démarrer%20le%20déploiement%20du%20plan%2015000%20FCFA',
+      features: ['Hébergement dédié local', 'Intégration comptable ERP & SIGE', 'Responsable de compte dédié', 'SLA garanti 99.9%'],
+      popular: false
+    }
+  ]);
+
+  useEffect(() => {
+    const unsub = subscribeToSubscriptionPlans((data) => {
+      if (data && data.length > 0) {
+        setSubscriptionPlans(data);
+      }
+    });
+    return () => unsub();
+  }, []);
 
   // Form states for demo modal
   const [demoSchoolName, setDemoSchoolName] = useState('');
@@ -817,89 +863,65 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto items-stretch">
-                {/* Starter Plan */}
-                <div className="p-6 sm:p-8 rounded-3xl bg-white shadow-md flex flex-col justify-between border border-[#eaedff]">
-                  <div>
-                    <span className="text-xs text-[#464555] uppercase font-bold tracking-wider">Collège / Primaire Essentiel</span>
-                    <div className="mt-2 mb-4 flex items-baseline gap-1">
-                      <span className="text-3xl sm:text-4xl font-extrabold text-[#131b2e]">1 500</span>
-                      <span className="text-xs text-[#464555] font-semibold">FCFA / élève / an</span>
-                    </div>
-                    <p className="text-xs text-[#464555] mb-6 leading-relaxed">
-                      Idéal pour numériser le carnet de liaison et fluidifier les alertes présences de base.
-                    </p>
-                    <div className="flex flex-col gap-2.5 text-xs text-[#131b2e]">
-                      <div className="flex items-center gap-2"><span className="material-symbols-outlined text-[#006e4b] text-[18px]">check</span> Carnet de liaison numérique</div>
-                      <div className="flex items-center gap-2"><span className="material-symbols-outlined text-[#006e4b] text-[18px]">check</span> Relevé d'absences et retards</div>
-                      <div className="flex items-center gap-2"><span className="material-symbols-outlined text-[#006e4b] text-[18px]">check</span> Notifications par Push Mobile</div>
-                      <div className="flex items-center gap-2"><span className="material-symbols-outlined text-[#006e4b] text-[18px]">check</span> Support technique par email</div>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => setShowDemoModal(true)}
-                    className="w-full mt-8 h-12 rounded-xl bg-[#eaedff] hover:bg-[#dae2fd] text-[#131b2e] font-bold text-xs transition-all cursor-pointer" 
-                    type="button"
+                {subscriptionPlans.map((plan) => (
+                  <div 
+                    key={plan.id} 
+                    className={`p-6 sm:p-8 rounded-3xl flex flex-col justify-between transition-all ${
+                      plan.popular 
+                        ? 'relative bg-gradient-to-b from-[#3525cd] to-[#4f46e5] text-white shadow-2xl transform md:-translate-y-4' 
+                        : 'bg-white shadow-md border border-[#eaedff] text-[#131b2e]'
+                    }`}
                   >
-                    Choisir cette formule
-                  </button>
-                </div>
-
-                {/* Pro Institution (Popular) */}
-                <div className="relative p-6 sm:p-8 rounded-3xl bg-gradient-to-b from-[#3525cd] to-[#4f46e5] text-white shadow-2xl flex flex-col justify-between transform md:-translate-y-4">
-                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 px-4 py-1 rounded-full bg-[#fd6a49] text-white text-[10px] uppercase font-bold tracking-wider shadow-md">
-                    Le Plus Plébiscité
+                    {plan.popular && (
+                      <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 px-4 py-1 rounded-full bg-[#fd6a49] text-white text-[10px] uppercase font-bold tracking-wider shadow-md">
+                        Le Plus Plébiscité
+                      </div>
+                    )}
+                    <div>
+                      <span className={`text-xs uppercase font-bold tracking-wider ${plan.popular ? 'text-[#c3c0ff]' : 'text-[#464555]'}`}>
+                        {plan.name}
+                      </span>
+                      <div className="mt-2 mb-4 flex items-baseline gap-1">
+                        <span className={`text-3xl sm:text-4xl font-extrabold ${plan.popular ? 'text-white' : 'text-[#131b2e]'}`}>
+                          {plan.price >= 1000 ? plan.price.toLocaleString() : plan.price}
+                        </span>
+                        <span className={`text-xs ${plan.popular ? 'text-[#c3c0ff]' : 'text-[#464555]'}`}>
+                          {plan.period}
+                        </span>
+                      </div>
+                      <p className={`text-xs mb-6 leading-relaxed ${plan.popular ? 'text-[#dad7ff]' : 'text-[#464555]'}`}>
+                        {plan.description}
+                      </p>
+                      <div className={`flex flex-col gap-2.5 text-xs ${plan.popular ? 'text-white' : 'text-[#131b2e]'}`}>
+                        {plan.features.map((feat, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <span className={`material-symbols-outlined text-[18px] ${plan.popular ? 'text-[#6ffbbe]' : 'text-[#006e4b]'}`}>
+                              {plan.popular ? 'check_circle' : 'check'}
+                            </span>
+                            <span>{feat}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        if (plan.redirectUrl) {
+                          window.open(plan.redirectUrl, '_blank');
+                        } else {
+                          setShowDemoModal(true);
+                        }
+                      }}
+                      className={`w-full mt-8 h-12 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                        plan.popular 
+                          ? 'bg-white text-[#3525cd] shadow-lg hover:bg-[#faf8ff]' 
+                          : 'bg-[#eaedff] hover:bg-[#dae2fd] text-[#131b2e]'
+                      }`}
+                      type="button"
+                    >
+                      {plan.buttonText || 'Choisir cette formule'}
+                    </button>
                   </div>
-                  <div>
-                    <span className="text-xs text-[#c3c0ff] uppercase font-bold tracking-wider">Institution Complète</span>
-                    <div className="mt-2 mb-4 flex items-baseline gap-1">
-                      <span className="text-3xl sm:text-4xl font-extrabold text-white">2 800</span>
-                      <span className="text-xs text-[#c3c0ff]">FCFA / élève / an</span>
-                    </div>
-                    <p className="text-xs text-[#dad7ff] mb-6 leading-relaxed">
-                      La solution intégrale : bulletins certifiés, suivi financier et SMS illimités.
-                    </p>
-                    <div className="flex flex-col gap-2.5 text-xs text-white">
-                      <div className="flex items-center gap-2"><span className="material-symbols-outlined text-[#6ffbbe] text-[18px]">check_circle</span> Tout le pack Essentiel</div>
-                      <div className="flex items-center gap-2"><span className="material-symbols-outlined text-[#6ffbbe] text-[18px]">check_circle</span> Bulletins officiels avec QR de sécurité</div>
-                      <div className="flex items-center gap-2"><span className="material-symbols-outlined text-[#6ffbbe] text-[18px]">check_circle</span> Passerelle SMS Directe & WhatsApp</div>
-                      <div className="flex items-center gap-2"><span className="material-symbols-outlined text-[#6ffbbe] text-[18px]">check_circle</span> Suivi des paiements Mobile Money</div>
-                      <div className="flex items-center gap-2"><span className="material-symbols-outlined text-[#6ffbbe] text-[18px]">check_circle</span> Formation offerte sur site aux professeurs</div>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => setShowDemoModal(true)}
-                    className="w-full mt-8 h-12 rounded-xl bg-white text-[#3525cd] font-bold text-xs shadow-lg hover:bg-[#faf8ff] transition-all cursor-pointer" 
-                    type="button"
-                  >
-                    Démarrer le déploiement
-                  </button>
-                </div>
-
-                {/* Custom Campus */}
-                <div className="p-6 sm:p-8 rounded-3xl bg-white shadow-md flex flex-col justify-between border border-[#eaedff]">
-                  <div>
-                    <span className="text-xs text-[#464555] uppercase font-bold tracking-wider">Réseau & Groupes Scolaires</span>
-                    <div className="mt-2 mb-4 flex items-baseline gap-1">
-                      <span className="text-2xl sm:text-3xl font-extrabold text-[#131b2e]">Sur-mesure</span>
-                    </div>
-                    <p className="text-xs text-[#464555] mb-6 leading-relaxed">
-                      Pour les réseaux de plus de 2 000 élèves, congrégations et groupes scolaires multi-sites.
-                    </p>
-                    <div className="flex flex-col gap-2.5 text-xs text-[#131b2e]">
-                      <div className="flex items-center gap-2"><span className="material-symbols-outlined text-[#006e4b] text-[18px]">check</span> Hébergement dédié local</div>
-                      <div className="flex items-center gap-2"><span className="material-symbols-outlined text-[#006e4b] text-[18px]">check</span> Intégration comptable ERP & SIGE</div>
-                      <div className="flex items-center gap-2"><span className="material-symbols-outlined text-[#006e4b] text-[18px]">check</span> Responsable de compte dédié</div>
-                      <div className="flex items-center gap-2"><span className="material-symbols-outlined text-[#006e4b] text-[18px]">check</span> SLA garanti 99.9%</div>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => setShowDemoModal(true)}
-                    className="w-full mt-8 h-12 rounded-xl bg-[#eaedff] hover:bg-[#dae2fd] text-[#131b2e] font-bold text-xs transition-all cursor-pointer" 
-                    type="button"
-                  >
-                    Contacter nos conseillers
-                  </button>
-                </div>
+                ))}
               </div>
 
               {/* Free setup badge banner */}

@@ -225,3 +225,16 @@ export interface TeacherScheduleSlot {
   status: 'done' | 'active' | 'upcoming';
   studentCount?: number;
 }
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  price: number;
+  period: string;
+  description: string;
+  buttonText: string;
+  redirectUrl: string;
+  features: string[];
+  popular?: boolean;
+}
+

@@ -4,13 +4,17 @@ import {
   SchoolClass, 
   UserAccount, 
   UserRole, 
-  ActivityLog 
+  ActivityLog,
+  SubscriptionPlan 
 } from '../../types';
 import { 
   subscribeToStudents, 
   subscribeToClasses, 
   subscribeToUsers, 
   subscribeToActivityLogs,
+  subscribeToSubscriptionPlans,
+  subscribeToWebhookLogs,
+  simulateWebhookInFirestore,
   createStudentInFirestore,
   updateStudentInFirestore,
   deleteStudentInFirestore,
@@ -21,7 +25,9 @@ import {
   createTeacherInFirestore,
   updateTeacherAssignments,
   associateParentToStudentInFirestore,
-  createCircularInFirestore
+  createCircularInFirestore,
+  updateSubscriptionPlanInFirestore,
+  WebhookLog
 } from '../../firebase/firestoreService';
 
 export const AdminDashboard: React.FC = () => {
@@ -33,11 +39,15 @@ export const AdminDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   // Navigation & Filtering
-  const [activeTab, setActiveTab] = useState<'eleves' | 'classes' | 'profs' | 'comptes' | 'associations' | 'activites'>('eleves');
+  const [activeTab, setActiveTab] = useState<'eleves' | 'classes' | 'profs' | 'comptes' | 'associations' | 'activites' | 'plans' | 'webhooks'>('eleves');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('all');
   const [auditCategoryFilter, setAuditCategoryFilter] = useState<string>('all');
+  const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
+  const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
+  const [editingPlanRedirectUrl, setEditingPlanRedirectUrl] = useState<{ [key: string]: string }>({});
+  const [isSavingPlan, setIsSavingPlan] = useState<string | null>(null);
 
   // Modals - Students
   const [showCreateStudentModal, setShowCreateStudentModal] = useState(false);
@@ -149,13 +159,41 @@ export const AdminDashboard: React.FC = () => {
       setActivityLogs(data);
     });
 
+    const unsubPlans = subscribeToSubscriptionPlans((data) => {
+      setSubscriptionPlans(data);
+      const urls: { [key: string]: string } = {};
+      data.forEach(p => {
+        urls[p.id] = p.redirectUrl || '';
+      });
+      setEditingPlanRedirectUrl(urls);
+    });
+
+    const unsubWebhooks = subscribeToWebhookLogs((data) => {
+      setWebhookLogs(data);
+    });
+
     return () => {
       unsubStudents();
       unsubClasses();
       unsubUsers();
       unsubLogs();
+      unsubPlans();
+      unsubWebhooks();
     };
   }, []);
+
+  const handleSavePlanUrl = async (planId: string) => {
+    setIsSavingPlan(planId);
+    try {
+      const newUrl = editingPlanRedirectUrl[planId] || '';
+      await updateSubscriptionPlanInFirestore(planId, { redirectUrl: newUrl });
+      showToast(`Lien de redirection mis à jour avec succès pour le plan !`);
+    } catch (err: any) {
+      showToast(err.message || 'Erreur lors de la mise à jour du lien', 'error');
+    } finally {
+      setIsSavingPlan(null);
+    }
+  };
 
   const showToast = (text: string, type: 'success' | 'info' | 'error' = 'success') => {
     setToastMessage({ text, type });
@@ -765,6 +803,30 @@ export const AdminDashboard: React.FC = () => {
             >
               <span className="material-symbols-outlined text-[16px]">history</span>
               <span>Journal & Audit</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('plans')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                activeTab === 'plans' 
+                  ? 'bg-[#3525cd] text-white shadow-sm' 
+                  : 'bg-[#f2f3ff] text-[#464555] hover:bg-[#eaedff]'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">payments</span>
+              <span>Plans de souscription</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('webhooks')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                activeTab === 'webhooks' 
+                  ? 'bg-[#3525cd] text-white shadow-sm' 
+                  : 'bg-[#f2f3ff] text-[#464555] hover:bg-[#eaedff]'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">webhook</span>
+              <span>Journal Webhooks ({webhookLogs.length})</span>
             </button>
           </div>
 
@@ -1414,6 +1476,221 @@ export const AdminDashboard: React.FC = () => {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ========================================== */}
+        {/* TAB 7: PLANS DE SOUSCRIPTION               */}
+        {/* ========================================== */}
+        {activeTab === 'plans' && (
+          <div className="space-y-6">
+            <div className="p-5 rounded-2xl bg-[#faf8ff] border border-[#eaedff]">
+              <h3 className="text-sm font-bold text-[#3525cd] flex items-center gap-2 mb-1">
+                <span className="material-symbols-outlined text-[18px]">payments</span>
+                <span>Gestion & Paramétrage des Plans de Souscription (15 000, 1 500, 2 100 FCFA)</span>
+              </h3>
+              <p className="text-xs text-[#464555]">
+                Configurez en temps réel les liens de redirection (WhatsApp, passerelle de paiement, lien de déploiement) pour chacun des trois plans de souscription présentés sur la landing page. Dès que l'administrateur modifie et enregistre ces liens, ils sont immédiatement pris en charge par la plateforme.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {subscriptionPlans.map((plan) => (
+                <div key={plan.id} className="p-6 rounded-3xl bg-white border border-[#eaedff] shadow-sm flex flex-col justify-between space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-[#777587]">Référence : {plan.id}</span>
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-extrabold ${plan.popular ? 'bg-[#3525cd] text-white' : 'bg-[#e2dfff] text-[#3525cd]'}`}>
+                        {plan.price.toLocaleString()} {plan.period}
+                      </span>
+                    </div>
+                    <h4 className="text-base font-extrabold text-[#131b2e] mb-1">{plan.name}</h4>
+                    <p className="text-xs text-[#464555] mb-4 leading-relaxed">{plan.description}</p>
+
+                    <div className="space-y-2 mb-4 bg-[#f2f3ff] p-3.5 rounded-2xl border border-[#eaedff]">
+                      <label className="block text-[11px] font-bold text-[#131b2e] flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[14px] text-[#006e4b]">webhook</span>
+                          <span>URL Webhook pour ce plan :</span>
+                        </span>
+                        <button
+                          onClick={() => {
+                            const url = `${window.location.origin}/api/webhooks/${plan.id}`;
+                            navigator.clipboard.writeText(url);
+                            showToast(`URL Webhook copiée dans le presse-papier !`);
+                          }}
+                          className="text-[10px] text-[#3525cd] hover:underline font-bold flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[12px]">content_copy</span>
+                          <span>Copier l'URL</span>
+                        </button>
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={`${window.location.origin}/api/webhooks/${plan.id}`}
+                        className="w-full px-3 py-1.5 text-[11px] rounded-lg bg-white border border-[#eaedff] font-mono text-[#777587]"
+                      />
+                    </div>
+
+                    <div className="space-y-2 mb-4 bg-[#f2f3ff] p-3.5 rounded-2xl border border-[#eaedff]">
+                      <label className="block text-[11px] font-bold text-[#131b2e] flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[14px] text-[#3525cd]">link</span>
+                        <span>Lien de Redirection (Bouton "{plan.buttonText}")</span>
+                      </label>
+                      <input
+                        type="url"
+                        value={editingPlanRedirectUrl[plan.id] !== undefined ? editingPlanRedirectUrl[plan.id] : plan.redirectUrl}
+                        onChange={(e) => setEditingPlanRedirectUrl({ ...editingPlanRedirectUrl, [plan.id]: e.target.value })}
+                        placeholder="https://wa.me/225... ou URL de souscription"
+                        className="w-full px-3 py-2 text-xs rounded-xl bg-white border border-[#eaedff] focus:ring-2 focus:ring-[#3525cd] outline-none font-mono text-[#3525cd]"
+                      />
+                    </div>
+
+                    <div className="text-[11px] text-[#777587] font-semibold mb-1">Avantages inclus :</div>
+                    <ul className="text-xs text-[#464555] space-y-1">
+                      {plan.features.map((feat, idx) => (
+                        <li key={idx} className="flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-[14px] text-[#006e4b]">check</span>
+                          <span>{feat}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="pt-4 border-t border-[#eaedff]">
+                    <button
+                      onClick={() => handleSavePlanUrl(plan.id)}
+                      disabled={isSavingPlan === plan.id}
+                      className="w-full py-2.5 rounded-xl bg-[#3525cd] hover:bg-[#4f46e5] text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {isSavingPlan === plan.id && <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>}
+                      <span>Enregistrer ce lien de redirection</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ========================================== */}
+        {/* TAB 8: JOURNAL DES WEBHOOKS                */}
+        {/* ========================================== */}
+        {activeTab === 'webhooks' && (
+          <div className="space-y-6">
+            <div className="p-5 rounded-2xl bg-[#faf8ff] border border-[#eaedff] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-bold text-[#3525cd] flex items-center gap-2 mb-1">
+                  <span className="material-symbols-outlined text-[18px]">webhook</span>
+                  <span>Journal des Webhooks & Notifications d'Achat Externes</span>
+                </h3>
+                <p className="text-xs text-[#464555]">
+                  Liste de tous les webhooks reçus des plateformes de paiement externes. Chaque webhook extrait automatiquement le nom et l'email du client et déclenche l'envoi d'un email de confirmation d'achat.
+                </p>
+                <div className="mt-2 p-2.5 rounded-xl bg-[#fff8e6] border border-[#ffe0b2] text-[11px] text-[#8d6b00] flex items-start gap-1.5">
+                  <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">info</span>
+                  <span>
+                    <strong>Note sur l'environnement de prévision :</strong> Sur l'URL de test (<code>ais-dev-...</code>), le proxy de sécurité AI Studio intercepte les requêtes externes sans cookie de session avec la page de vérification de cookies. Pour tester instantanément le traitement complet (enregistrement Firestore, extraction et envoi d'email automatique), utilisez le bouton <strong>« Simuler un Webhook »</strong> ci-contre. En production (sur votre propre domaine ou hébergement Cloud Run/Render), les passerelles de paiement tierces (CinetPay, FedaPay, Stripe) communiqueront directement sans aucune restriction.
+                  </span>
+                </div>
+              </div>
+
+              {/* Simulation Test Box */}
+              <div className="flex items-center gap-2 bg-white p-3 rounded-2xl border border-[#eaedff] shadow-sm">
+                <select
+                  id="simPlanSelect"
+                  className="px-2 py-1 text-xs bg-[#f2f3ff] text-[#131b2e] rounded-xl border border-[#eaedff] font-semibold outline-none cursor-pointer"
+                >
+                  <option value="plan_1500">Plan 1500 FCFA</option>
+                  <option value="plan_2100">Plan 2100 FCFA</option>
+                  <option value="plan_15000">Plan 15000 FCFA</option>
+                </select>
+                <button
+                  onClick={async () => {
+                    const selectEl = document.getElementById('simPlanSelect') as HTMLSelectElement;
+                    const pId = selectEl?.value || 'plan_1500';
+                    const email = prompt("Entrez l'email du client test :", "client.test@gmail.com");
+                    if (!email) return;
+                    const name = prompt("Entrez le nom du client test :", "M. Kouassi Test");
+                    if (!name) return;
+
+                    try {
+                      await simulateWebhookInFirestore(pId, email, name);
+                      showToast(`Webhook simulé avec succès ! Email de confirmation envoyé à ${email}.`);
+                    } catch (err: any) {
+                      showToast(err.message || 'Erreur lors de la simulation', 'error');
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-[#006e4b] hover:bg-[#005338] text-white text-xs font-bold shadow-sm flex items-center gap-1 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px]">play_arrow</span>
+                  <span>Simuler un Webhook</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-3xl border border-[#eaedff] overflow-hidden shadow-sm">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="text-[#777587] font-bold border-b border-[#eaedff] uppercase tracking-wider text-[10px] bg-[#f2f3ff]/50">
+                    <th className="py-3 px-4">Date / Heure</th>
+                    <th className="py-3">Plan / URL</th>
+                    <th className="py-3">Client (Nom & Email)</th>
+                    <th className="py-3">Événement</th>
+                    <th className="py-3">Statut</th>
+                    <th className="py-3 text-right pr-4">Payload JSON</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#eaedff]">
+                  {webhookLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-12 text-center text-[#777587]">
+                        Aucun webhook reçu pour le moment. Utilisez le bouton « Simuler un Webhook » ci-dessus pour tester la réception et l'envoi d'email automatique.
+                      </td>
+                    </tr>
+                  ) : (
+                    webhookLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-[#f2f3ff]/60 transition-colors">
+                        <td className="py-3 px-4 font-mono text-[11px] text-[#777587]">
+                          {new Date(log.timestamp).toLocaleString('fr-FR')}
+                        </td>
+                        <td className="py-3">
+                          <span className="px-2.5 py-1 rounded-lg bg-[#e2dfff] text-[#3525cd] font-bold text-[11px]">
+                            {log.planId}
+                          </span>
+                        </td>
+                        <td className="py-3">
+                          <div className="font-bold text-[#131b2e]">{log.customerName || 'Client'}</div>
+                          <div className="text-[10px] text-[#777587]">{log.customerEmail}</div>
+                        </td>
+                        <td className="py-3">
+                          <span className="font-mono text-[11px] bg-[#f2f3ff] px-2 py-0.5 rounded text-[#3525cd]">
+                            {log.event}
+                          </span>
+                        </td>
+                        <td className="py-3">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#6ffbbe]/30 text-[#005236] flex items-center gap-1 w-fit">
+                            <span className="material-symbols-outlined text-[12px]">check_circle</span>
+                            <span>{log.status}</span>
+                          </span>
+                        </td>
+                        <td className="py-3 text-right pr-4">
+                          <button
+                            onClick={() => {
+                              alert(`Payload complet du Webhook (${log.id}):\n\n${log.payload}`);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-[#f2f3ff] hover:bg-[#eaedff] text-[#3525cd] font-bold text-[10px] cursor-pointer"
+                          >
+                            Voir Payload
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         )}

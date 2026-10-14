@@ -52,6 +52,16 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Subscription Plans
+    match /subscription_plans/{planId} {
+      allow read, write: if true;
+    }
+
+    // Webhook Logs
+    match /webhook_logs/{logId} {
+      allow read, write: if true;
+    }
+
     // Connection check & test
     match /test/{docId} {
       allow read, write: if true;
