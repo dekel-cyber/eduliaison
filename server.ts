@@ -366,14 +366,51 @@ app.post('/api/confirm-password-reset', async (req, res) => {
   }
 });
 
+function extractCustomerInfo(obj: any): { email: string; name: string } {
+  let email = 'client@example.com';
+  let name = 'Client';
+
+  if (!obj) return { email, name };
+
+  const emailKeys = ['email', 'customer_email', 'buyer_email', 'user_email', 'mail', 'customeremail', 'buyeremail', 'client_email', 'useremail'];
+  const nameKeys = ['name', 'customer_name', 'buyer_name', 'user_name', 'fullname', 'full_name', 'customername', 'buyername', 'client_name', 'username', 'nom', 'prenom', 'firstname', 'lastname', 'first_name', 'last_name'];
+
+  function search(node: any, depth = 0) {
+    if (!node || depth > 5) return;
+    
+    if (typeof node === 'object') {
+      const keys = Array.isArray(node) ? node : Object.keys(node);
+      for (const k of keys) {
+        const val = Array.isArray(node) ? k : node[k];
+        const keyStr = typeof k === 'string' ? k.toLowerCase() : '';
+
+        if (val && typeof val === 'object') {
+          search(val, depth + 1);
+        } else if (typeof val === 'string' && val.trim().length > 0) {
+          const trimmed = val.trim();
+          if (email === 'client@example.com' && trimmed.includes('@') && (emailKeys.some(ek => keyStr.includes(ek)) || trimmed.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/))) {
+            email = trimmed;
+          }
+          if (name === 'Client' && nameKeys.some(nk => keyStr.includes(nk)) && trimmed.length > 1) {
+            name = trimmed;
+          }
+        }
+      }
+    }
+  }
+
+  search(obj);
+
+  return { email, name };
+}
+
 // Webhook endpoint for subscription plans
 app.post('/api/webhooks/:planId', async (req, res) => {
   try {
     const { planId } = req.params;
     const payload = req.body || {};
 
-    const customerEmail = payload.email || payload.customer_email || payload.buyer_email || payload.user_email || 'client@example.com';
-    const customerName = payload.name || payload.customer_name || payload.buyer_name || payload.user_name || 'Client';
+    const { email: customerEmail, name: customerName } = extractCustomerInfo(payload);
     const eventType = payload.event || payload.type || 'payment.success';
 
     const logId = `wh_${Date.now()}_${Math.floor(Math.random() * 1000)}`;

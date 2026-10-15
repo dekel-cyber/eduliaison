@@ -91,6 +91,10 @@ export const AdminDashboard: React.FC = () => {
   const [showCircularModal, setShowCircularModal] = useState(false);
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
 
+  // Modals - Webhook Payload Inspection
+  const [showWebhookPayloadModal, setShowWebhookPayloadModal] = useState(false);
+  const [selectedWebhookLogForPayload, setSelectedWebhookLogForPayload] = useState<WebhookLog | null>(null);
+
   // Toast / Feedback
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
 
@@ -1679,11 +1683,13 @@ export const AdminDashboard: React.FC = () => {
                         <td className="py-3 text-right pr-4">
                           <button
                             onClick={() => {
-                              alert(`Payload complet du Webhook (${log.id}):\n\n${log.payload}`);
+                              setSelectedWebhookLogForPayload(log);
+                              setShowWebhookPayloadModal(true);
                             }}
-                            className="px-2.5 py-1 rounded-lg bg-[#f2f3ff] hover:bg-[#eaedff] text-[#3525cd] font-bold text-[10px] cursor-pointer"
+                            className="px-2.5 py-1 rounded-lg bg-[#f2f3ff] hover:bg-[#eaedff] text-[#3525cd] font-bold text-[10px] cursor-pointer flex items-center gap-1"
                           >
-                            Voir Payload
+                            <span className="material-symbols-outlined text-[14px]">code</span>
+                            <span>Voir Payload</span>
                           </button>
                         </td>
                       </tr>
@@ -2909,6 +2915,82 @@ export const AdminDashboard: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* MODAL: VOIR LE PAYLOAD DU WEBHOOK          */}
+      {/* ========================================== */}
+      {showWebhookPayloadModal && selectedWebhookLogForPayload && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#283044]/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-[#eaedff] animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-4 border-b border-[#eaedff] mb-4">
+              <div className="flex items-center gap-2.5">
+                <span className="w-10 h-10 rounded-xl bg-[#e2dfff] text-[#3525cd] flex items-center justify-center">
+                  <span className="material-symbols-outlined text-[22px]">webhook</span>
+                </span>
+                <div>
+                  <h3 className="text-base font-extrabold text-[#131b2e]">Payload Complet du Webhook</h3>
+                  <p className="text-xs text-[#777587]">ID : {selectedWebhookLogForPayload.id} • Plan : {selectedWebhookLogForPayload.planId}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowWebhookPayloadModal(false)}
+                className="w-9 h-9 rounded-full bg-[#f2f3ff] text-[#464555] hover:bg-[#eaedff] flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            <div className="space-y-3 mb-6 flex-1 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-3 text-xs bg-[#f2f3ff] p-3.5 rounded-2xl border border-[#eaedff]">
+                <div>
+                  <span className="text-[#777587] block text-[10px] uppercase font-bold">Client Identifié :</span>
+                  <span className="font-bold text-[#131b2e]">{selectedWebhookLogForPayload.customerName}</span>
+                </div>
+                <div>
+                  <span className="text-[#777587] block text-[10px] uppercase font-bold">Email du Client :</span>
+                  <span className="font-bold text-[#3525cd]">{selectedWebhookLogForPayload.customerEmail}</span>
+                </div>
+                <div>
+                  <span className="text-[#777587] block text-[10px] uppercase font-bold">Événement :</span>
+                  <span className="font-mono text-[#131b2e]">{selectedWebhookLogForPayload.event}</span>
+                </div>
+                <div>
+                  <span className="text-[#777587] block text-[10px] uppercase font-bold">Date / Heure :</span>
+                  <span className="font-mono text-[#131b2e]">{new Date(selectedWebhookLogForPayload.timestamp).toLocaleString('fr-FR')}</span>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-[#131b2e]">Données JSON Brutes (Payload) :</label>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(selectedWebhookLogForPayload.payload);
+                      showToast('Payload copié dans le presse-papier !');
+                    }}
+                    className="px-3 py-1 rounded-xl bg-[#3525cd] hover:bg-[#4f46e5] text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">content_copy</span>
+                    <span>Copier le payload</span>
+                  </button>
+                </div>
+                <pre className="p-4 rounded-2xl bg-[#191919] text-[#e3e3e3] text-xs font-mono overflow-x-auto max-h-[350px] border border-[#3e3e3e]">
+                  {selectedWebhookLogForPayload.payload}
+                </pre>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-[#eaedff] flex justify-end">
+              <button
+                onClick={() => setShowWebhookPayloadModal(false)}
+                className="px-5 py-2.5 rounded-xl bg-[#f2f3ff] hover:bg-[#eaedff] text-[#3525cd] font-bold text-xs transition-colors cursor-pointer"
+              >
+                Fermer
+              </button>
+            </div>
           </div>
         </div>
       )}
